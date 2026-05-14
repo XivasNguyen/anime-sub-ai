@@ -1,0 +1,21 @@
+provider: openai
+
+openai:
+  api_key: env:OPENAI_API_KEY
+  model: gpt-5
+
+translation:
+  chunk_size: 12
+  overlap_lines: 2
+  max_concurrency: 3
+  retry_count: 3
+
+mux:
+  set_default_subtitle: true
+  subtitle_language: vie
+  subtitle_track_name: Vietnamese AI
+
+output:
+  directory: output
+  temp_directory: temp
+

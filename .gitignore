@@ -8,6 +8,7 @@ Thumbs.db
 
 # Logs
 *.log
+logs/
 
 # Environment
 .env
@@ -21,3 +22,8 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+
+# Runtime outputs
+output/
+temp/
+cache/
