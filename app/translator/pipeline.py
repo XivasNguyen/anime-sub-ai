@@ -74,7 +74,10 @@ async def translate_lines(
             print(f"Completed chunk {chunk_index + 1}/{len(chunks)} in {elapsed:.1f}s")
             return result
 
-    grouped = await asyncio.gather(*(translate_chunk(index) for index in range(len(chunks))))
+    try:
+        grouped = await asyncio.gather(*(translate_chunk(index) for index in range(len(chunks))))
+    finally:
+        await provider.close()
     translations: dict[int, str] = {}
     for results in grouped:
         for result in results:

@@ -51,3 +51,6 @@ class LMStudioTranslator(TranslatorProvider):
         if not content:
             raise TranslationResponseError("LM Studio returned an empty response.")
         return parse_translation_response(content, {line.index for line in chunk.lines})
+
+    async def close(self) -> None:
+        await self.client.close()

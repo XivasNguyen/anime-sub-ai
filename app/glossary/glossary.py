@@ -19,6 +19,64 @@ HONORIFICS = {
     "onii-chan",
     "onee-sama",
 }
+STOPWORDS = {
+    "a",
+    "all",
+    "am",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "but",
+    "by",
+    "could",
+    "do",
+    "does",
+    "episode",
+    "first",
+    "for",
+    "from",
+    "give",
+    "great",
+    "have",
+    "he",
+    "hey",
+    "i",
+    "if",
+    "in",
+    "is",
+    "it",
+    "keep",
+    "later",
+    "let",
+    "like",
+    "man",
+    "no",
+    "not",
+    "of",
+    "okay",
+    "or",
+    "right",
+    "see",
+    "shall",
+    "she",
+    "so",
+    "that",
+    "the",
+    "then",
+    "this",
+    "to",
+    "tv",
+    "we",
+    "well",
+    "what",
+    "which",
+    "work",
+    "yeah",
+    "you",
+    "your",
+}
 CAPITALIZED_RE = re.compile(r"\b[A-Z][A-Za-z][A-Za-z'-]*(?:\s+[A-Z][A-Za-z][A-Za-z'-]*){0,3}\b")
 
 
@@ -80,19 +138,29 @@ def build_glossary(lines: list[SubtitleLine], bible: SeriesBible | None = None) 
 
     counts: dict[str, int] = {}
     for line in lines:
-        scan_text = f"{line.text}\n{line.raw_text}"
+        scan_text = line.text.replace("\\N", " ")
         for honorific in HONORIFICS:
             if honorific in line.raw_text.lower():
                 counts[honorific] = counts.get(honorific, 0) + 1
         for match in CAPITALIZED_RE.findall(scan_text):
-            if match.lower() in {"i", "the", "english", "default"}:
+            match = match.strip()
+            key = match.lower().strip("'")
+            if key in STOPWORDS or key in {"english", "default"}:
+                continue
+            if len(match) <= 2:
                 continue
             counts[match] = counts.get(match, 0) + 1
+            if "-" in match:
+                base, suffix = match.rsplit("-", 1)
+                if suffix.lower().strip("'s") in HONORIFICS and base.lower() not in STOPWORDS:
+                    counts[base] = counts.get(base, 0) + 1
 
     for source, count in counts.items():
-        if count < 2 and source.lower() not in HONORIFICS:
+        source_key = source.lower()
+        if count < 2 and source_key not in HONORIFICS:
             continue
-        key = source.lower()
-        terms.setdefault(key, GlossaryTerm(source=source, target=source, note=f"Auto-detected {count}x"))
+        if source_key not in HONORIFICS and " " not in source and "-" not in source and count < 2:
+            continue
+        terms.setdefault(source_key, GlossaryTerm(source=source, target=source, note=f"Auto-detected {count}x"))
 
     return Glossary(terms=sorted(terms.values(), key=lambda item: item.source.lower()))

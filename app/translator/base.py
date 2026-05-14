@@ -40,3 +40,6 @@ class TranslatorProvider(ABC):
     @abstractmethod
     async def translate(self, chunk: TranslationChunk) -> list[TranslationResult]:
         pass
+
+    async def close(self) -> None:
+        pass
