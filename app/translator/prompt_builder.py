@@ -36,3 +36,21 @@ def build_user_prompt(chunk: TranslationChunk) -> str:
     }
     return json.dumps(payload, ensure_ascii=False, indent=2)
 
+
+def build_compact_user_prompt(chunk: TranslationChunk) -> str:
+    payload = {
+        "context_before": [
+            {"index": line.index, "text": line.raw_text}
+            for line in chunk.context_before
+        ],
+        "lines_to_translate": [
+            {"index": line.index, "text": line.raw_text}
+            for line in chunk.lines
+        ],
+        "required_output": {
+            "translations": [
+                {"index": "integer from lines_to_translate", "translated_text": "Vietnamese ASS text"}
+            ]
+        },
+    }
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))

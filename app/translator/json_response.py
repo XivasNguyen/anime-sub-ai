@@ -11,10 +11,12 @@ class TranslationResponseError(RuntimeError):
 
 
 def parse_translation_response(content: str, expected_indexes: set[int]) -> list[TranslationResult]:
+    content = _extract_json_object(content)
     try:
-        data: Any = json.loads(content)
+        data: Any = json.loads(content, strict=False)
     except json.JSONDecodeError as exc:
-        raise TranslationResponseError(f"Malformed translation JSON: {exc}") from exc
+        preview = content[:300].replace("\n", "\\n")
+        raise TranslationResponseError(f"Malformed translation JSON: {exc}. Response starts with: {preview}") from exc
 
     translations = data.get("translations") if isinstance(data, dict) else None
     if not isinstance(translations, list):
@@ -41,3 +43,22 @@ def parse_translation_response(content: str, expected_indexes: set[int]) -> list
         raise TranslationResponseError(f"Missing translations for indexes: {sorted(missing)}")
     return sorted(results, key=lambda result: result.index)
 
+
+def _extract_json_object(content: str) -> str:
+    text = content.strip()
+    if text.startswith("```"):
+        lines = text.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+
+    if text.startswith("{"):
+        return text
+
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        return text[start : end + 1]
+    return text

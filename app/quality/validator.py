@@ -37,11 +37,15 @@ def validate_ass_file(path: Path) -> ValidationReport:
 
 
 def validate_translations(parsed: ParsedSubtitle, translations: dict[int, str]) -> ValidationReport:
-    report = ValidationReport()
-    if len(translations) != len(parsed.lines):
-        report.errors.append(f"Line count mismatch: {len(parsed.lines)} input lines, {len(translations)} translations.")
+    return validate_translation_lines(parsed.lines, translations)
 
-    for line in parsed.lines:
+
+def validate_translation_lines(lines, translations: dict[int, str]) -> ValidationReport:
+    report = ValidationReport()
+    if len(translations) != len(lines):
+        report.errors.append(f"Line count mismatch: {len(lines)} input lines, {len(translations)} translations.")
+
+    for line in lines:
         translated = translations.get(line.index)
         if translated is None:
             report.errors.append(f"Missing translation for line {line.index}.")
@@ -64,3 +68,18 @@ def validate_translations(parsed: ParsedSubtitle, translations: dict[int, str]) 
 
     return report
 
+
+def preserve_missing_ass_tags(lines, translations: dict[int, str]) -> dict[int, str]:
+    fixed = dict(translations)
+    for line in lines:
+        translated = fixed.get(line.index)
+        if translated is None:
+            continue
+        original_tags = ASS_TAG_RE.findall(line.raw_text)
+        if not original_tags:
+            continue
+        translated_tags = ASS_TAG_RE.findall(translated)
+        missing_tags = [tag for tag in original_tags if tag not in translated_tags]
+        if missing_tags:
+            fixed[line.index] = "".join(missing_tags) + translated
+    return fixed

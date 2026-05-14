@@ -6,7 +6,7 @@ from openai import AsyncOpenAI
 
 from app.translator.base import TranslationChunk, TranslationResult, TranslatorProvider
 from app.translator.json_response import TranslationResponseError, parse_translation_response
-from app.translator.prompt_builder import SYSTEM_PROMPT, build_user_prompt
+from app.translator.prompt_builder import build_compact_user_prompt
 
 
 class LMStudioTranslator(TranslatorProvider):
@@ -29,16 +29,18 @@ class LMStudioTranslator(TranslatorProvider):
 
     async def _translate_once(self, chunk: TranslationChunk) -> list[TranslationResult]:
         system_prompt = (
-            f"{SYSTEM_PROMPT}\n"
-            "Do not include reasoning, analysis, explanations, markdown, or code fences. "
-            "Return only the final JSON object."
+            "Translate anime subtitle text from English to natural Vietnamese. "
+            "Preserve ASS tags exactly, including {\\...} tags and \\N line breaks. "
+            "Preserve names and honorifics when appropriate. "
+            "Return only valid JSON with key translations. "
+            "No reasoning, no explanations, no markdown."
         )
-        user_prompt = f"{build_user_prompt(chunk)}\n/no_think"
+        user_prompt = f"{build_compact_user_prompt(chunk)}\n/no_think"
         response = await self.client.chat.completions.create(
             model=self.model,
             response_format={"type": "text"},
             temperature=0.2,
-            max_tokens=4096,
+            max_tokens=8192,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},

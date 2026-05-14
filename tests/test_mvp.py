@@ -6,7 +6,7 @@ from pathlib import Path
 
 from app.formatter.ass_formatter import rebuild_ass
 from app.parser.ass_parser import parse_ass
-from app.quality.validator import validate_ass_file, validate_translations
+from app.quality.validator import preserve_missing_ass_tags, validate_ass_file, validate_translations
 from app.translator.chunker import chunk_subtitles
 from app.translator.factory import create_translator
 from app.translator.lmstudio_provider import LMStudioTranslator
@@ -63,6 +63,25 @@ class MvpTests(unittest.TestCase):
                 '{"translations":[{"index":1,"translated_text":"Xin chào"}]}',
                 {1, 2},
             )
+
+    def test_parse_translation_response_extracts_json_from_text(self) -> None:
+        response = """
+        Here is the JSON:
+        ```json
+        {"translations":[{"index":1,"translated_text":"Xin chào"}]}
+        ```
+        """
+        parsed = parse_translation_response(response, {1})
+        self.assertEqual(parsed[0].translated_text, "Xin chào")
+
+    def test_preserve_missing_ass_tags(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "sample.ass"
+            source.write_text(SAMPLE_ASS, encoding="utf-8")
+            parsed = parse_ass(source)
+
+            fixed = preserve_missing_ass_tags(parsed.lines[:1], {1: "Cậu tới muộn rồi."})
+            self.assertEqual(fixed[1], "{\\an8}Cậu tới muộn rồi.")
 
     def test_create_ollama_translator(self) -> None:
         settings = Settings(provider="ollama")
