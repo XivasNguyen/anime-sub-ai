@@ -18,10 +18,29 @@ def _resolve_env(value: Any) -> Any:
     return value
 
 
+def _non_empty(value: Any, default: str) -> str:
+    if isinstance(value, str) and value.strip():
+        return value
+    return default
+
+
 @dataclass
 class OpenAISettings:
     api_key: str = ""
     model: str = "gpt-5"
+
+
+@dataclass
+class OllamaSettings:
+    base_url: str = "http://localhost:11434"
+    model: str = "qwen2.5:14b"
+
+
+@dataclass
+class LMStudioSettings:
+    base_url: str = "http://localhost:1234/v1"
+    model: str = "local-model"
+    api_key: str = "lm-studio"
 
 
 @dataclass
@@ -49,6 +68,8 @@ class OutputSettings:
 class Settings:
     provider: str = "openai"
     openai: OpenAISettings = field(default_factory=OpenAISettings)
+    ollama: OllamaSettings = field(default_factory=OllamaSettings)
+    lmstudio: LMStudioSettings = field(default_factory=LMStudioSettings)
     translation: TranslationSettings = field(default_factory=TranslationSettings)
     mux: MuxSettings = field(default_factory=MuxSettings)
     output: OutputSettings = field(default_factory=OutputSettings)
@@ -65,6 +86,8 @@ def load_settings(path: Path | None = None) -> Settings:
             data = _resolve_env(loaded)
 
     openai_data = data.get("openai", {})
+    ollama_data = data.get("ollama", {})
+    lmstudio_data = data.get("lmstudio", {})
     translation_data = data.get("translation", {})
     mux_data = data.get("mux", {})
     output_data = data.get("output", {})
@@ -74,6 +97,18 @@ def load_settings(path: Path | None = None) -> Settings:
         openai=OpenAISettings(
             api_key=openai_data.get("api_key", os.getenv("OPENAI_API_KEY", "")),
             model=openai_data.get("model", "gpt-5"),
+        ),
+        ollama=OllamaSettings(
+            base_url=_non_empty(ollama_data.get("base_url"), os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")),
+            model=_non_empty(ollama_data.get("model"), os.getenv("OLLAMA_MODEL", "qwen2.5:14b")),
+        ),
+        lmstudio=LMStudioSettings(
+            base_url=_non_empty(
+                lmstudio_data.get("base_url"),
+                os.getenv("LMSTUDIO_BASE_URL", "http://localhost:1234/v1"),
+            ),
+            model=_non_empty(lmstudio_data.get("model"), os.getenv("LMSTUDIO_MODEL", "local-model")),
+            api_key=_non_empty(lmstudio_data.get("api_key"), os.getenv("LMSTUDIO_API_KEY", "lm-studio")),
         ),
         translation=TranslationSettings(
             chunk_size=int(translation_data.get("chunk_size", 12)),
@@ -91,4 +126,3 @@ def load_settings(path: Path | None = None) -> Settings:
             temp_directory=Path(output_data.get("temp_directory", "temp")),
         ),
     )
-

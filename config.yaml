@@ -4,6 +4,15 @@ openai:
   api_key: env:OPENAI_API_KEY
   model: gpt-5
 
+ollama:
+  base_url: env:OLLAMA_BASE_URL
+  model: env:OLLAMA_MODEL
+
+lmstudio:
+  base_url: env:LMSTUDIO_BASE_URL
+  model: env:LMSTUDIO_MODEL
+  api_key: env:LMSTUDIO_API_KEY
+
 translation:
   chunk_size: 12
   overlap_lines: 2
@@ -18,4 +27,3 @@ mux:
 output:
   directory: output
   temp_directory: temp
-

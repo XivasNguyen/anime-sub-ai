@@ -11,7 +11,7 @@ from app.formatter.ass_formatter import rebuild_ass
 from app.muxer.mkv_muxer import mux_softsub
 from app.parser.ass_parser import parse_ass
 from app.quality.validator import validate_ass_file, validate_translations
-from app.translator.openai_provider import OpenAITranslator
+from app.translator.factory import SUPPORTED_PROVIDERS, create_translator
 from app.translator.pipeline import translate_lines
 
 app = typer.Typer(help="Anime AI subtitle pipeline MVP.")
@@ -72,9 +72,10 @@ def mux(
 @app.command()
 def translate(
     video: Path,
-    provider: str = typer.Option("openai", "--provider"),
+    provider: str | None = typer.Option(None, "--provider"),
     model: str | None = typer.Option(None, "--model"),
     batch_size: int | None = typer.Option(None, "--batch-size"),
+    max_concurrency: int | None = typer.Option(None, "--max-concurrency"),
     keep_en_sub: bool = typer.Option(True, "--keep-en-sub/--no-keep-en-sub"),
     set_default_sub: bool | None = typer.Option(None, "--set-default-sub/--no-set-default-sub"),
     dry_run: bool = typer.Option(False, "--dry-run"),
@@ -83,8 +84,9 @@ def translate(
     """Extract, translate, rebuild, validate, and mux a Vietnamese softsub MKV."""
     del keep_en_sub, debug
     settings = load_settings()
-    if provider != "openai":
-        raise typer.BadParameter("Only the OpenAI provider is implemented in the MVP.")
+    provider_name = (provider or settings.provider).lower()
+    if provider_name not in SUPPORTED_PROVIDERS:
+        raise typer.BadParameter(f"Unsupported provider. Use one of: {', '.join(SUPPORTED_PROVIDERS)}")
 
     output_dir = settings.output.directory
     temp_dir = settings.output.temp_directory
@@ -99,18 +101,14 @@ def translate(
         typer.echo(f"Dry run complete. Extracted {len(parsed.lines)} lines from {source_subtitle}.")
         return
 
-    translator = OpenAITranslator(
-        api_key=settings.openai.api_key,
-        model=model or settings.openai.model,
-        retry_count=settings.translation.retry_count,
-    )
+    translator = create_translator(settings, provider_name=provider_name, model=model)
     translations = asyncio.run(
         translate_lines(
             parsed.lines,
             translator,
             chunk_size=batch_size or settings.translation.chunk_size,
             overlap_lines=settings.translation.overlap_lines,
-            max_concurrency=settings.translation.max_concurrency,
+            max_concurrency=max_concurrency or settings.translation.max_concurrency,
         )
     )
 
@@ -134,4 +132,3 @@ def translate(
         set_default=settings.mux.set_default_sub if set_default_sub is None else set_default_sub,
     )
     typer.echo(f"Wrote MKV: {output_mkv}")
-

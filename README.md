@@ -25,6 +25,36 @@ Run the MVP pipeline:
 python -m app translate "episode.mkv"
 ```
 
+Use OpenAI:
+
+```bash
+python -m app translate "episode.mkv" --provider openai --model gpt-5
+```
+
+Use a local Ollama model:
+
+```bash
+ollama pull qwen2.5:14b
+python -m app translate "episode.mkv" --provider ollama --model qwen2.5:14b
+```
+
+Use LM Studio:
+
+1. Start LM Studio's local server.
+2. Load a chat/instruct model.
+3. Run:
+
+```bash
+python -m app translate "episode.mkv" --provider lmstudio --model local-model
+```
+
+The default LM Studio endpoint is `http://localhost:1234/v1`. Override it with:
+
+```bash
+set LMSTUDIO_BASE_URL=http://localhost:1234/v1
+set LMSTUDIO_MODEL=local-model
+```
+
 Useful commands:
 
 ```bash

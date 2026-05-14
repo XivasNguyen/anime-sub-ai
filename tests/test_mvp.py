@@ -8,7 +8,11 @@ from app.formatter.ass_formatter import rebuild_ass
 from app.parser.ass_parser import parse_ass
 from app.quality.validator import validate_ass_file, validate_translations
 from app.translator.chunker import chunk_subtitles
-from app.translator.openai_provider import parse_translation_response
+from app.translator.factory import create_translator
+from app.translator.lmstudio_provider import LMStudioTranslator
+from app.translator.json_response import parse_translation_response
+from app.translator.ollama_provider import OllamaTranslator
+from app.config.settings import Settings
 
 
 SAMPLE_ASS = """[Script Info]
@@ -60,7 +64,18 @@ class MvpTests(unittest.TestCase):
                 {1, 2},
             )
 
+    def test_create_ollama_translator(self) -> None:
+        settings = Settings(provider="ollama")
+        translator = create_translator(settings, provider_name="ollama", model="qwen2.5:7b")
+        self.assertIsInstance(translator, OllamaTranslator)
+        self.assertEqual(translator.model, "qwen2.5:7b")
+
+    def test_create_lmstudio_translator(self) -> None:
+        settings = Settings(provider="lmstudio")
+        translator = create_translator(settings, provider_name="lmstudio", model="google/gemma-3-12b")
+        self.assertIsInstance(translator, LMStudioTranslator)
+        self.assertEqual(translator.model, "google/gemma-3-12b")
+
 
 if __name__ == "__main__":
     unittest.main()
-

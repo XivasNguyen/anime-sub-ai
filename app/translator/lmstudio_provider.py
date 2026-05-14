@@ -9,11 +9,9 @@ from app.translator.json_response import TranslationResponseError, parse_transla
 from app.translator.prompt_builder import SYSTEM_PROMPT, build_user_prompt
 
 
-class OpenAITranslator(TranslatorProvider):
-    def __init__(self, api_key: str, model: str, retry_count: int = 3) -> None:
-        if not api_key:
-            raise ValueError("OpenAI API key is required. Set OPENAI_API_KEY or config openai.api_key.")
-        self.client = AsyncOpenAI(api_key=api_key)
+class LMStudioTranslator(TranslatorProvider):
+    def __init__(self, base_url: str, model: str, api_key: str = "lm-studio", retry_count: int = 3) -> None:
+        self.client = AsyncOpenAI(base_url=base_url.rstrip("/"), api_key=api_key or "lm-studio")
         self.model = model
         self.retry_count = retry_count
 
@@ -30,15 +28,23 @@ class OpenAITranslator(TranslatorProvider):
         raise last_error
 
     async def _translate_once(self, chunk: TranslationChunk) -> list[TranslationResult]:
+        system_prompt = (
+            f"{SYSTEM_PROMPT}\n"
+            "Do not include reasoning, analysis, explanations, markdown, or code fences. "
+            "Return only the final JSON object."
+        )
+        user_prompt = f"{build_user_prompt(chunk)}\n/no_think"
         response = await self.client.chat.completions.create(
             model=self.model,
-            response_format={"type": "json_object"},
+            response_format={"type": "text"},
+            temperature=0.2,
+            max_tokens=4096,
             messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": build_user_prompt(chunk)},
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
             ],
         )
         content = response.choices[0].message.content
         if not content:
-            raise TranslationResponseError("OpenAI returned an empty response.")
+            raise TranslationResponseError("LM Studio returned an empty response.")
         return parse_translation_response(content, {line.index for line in chunk.lines})
