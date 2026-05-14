@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import subprocess
+import os
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -17,9 +19,10 @@ class CommandResult:
 
 
 def run_command(args: list[str], cwd: Path | None = None) -> CommandResult:
+    resolved_args = [_resolve_tool(args[0]), *args[1:]]
     try:
         completed = subprocess.run(
-            args,
+            resolved_args,
             cwd=str(cwd) if cwd else None,
             check=True,
             text=True,
@@ -36,7 +39,7 @@ def run_command(args: list[str], cwd: Path | None = None) -> CommandResult:
         detail = stderr or stdout or str(exc)
         raise ToolError(f"Command failed ({' '.join(args)}): {detail}") from exc
 
-    return CommandResult(args=args, stdout=completed.stdout, stderr=completed.stderr)
+    return CommandResult(args=resolved_args, stdout=completed.stdout, stderr=completed.stderr)
 
 
 def command_available(name: str) -> bool:
@@ -46,3 +49,35 @@ def command_available(name: str) -> bool:
         return False
     return True
 
+
+def _resolve_tool(name: str) -> str:
+    if Path(name).parts:
+        direct = Path(name)
+        if direct.exists():
+            return str(direct)
+
+    found = shutil.which(name)
+    if found:
+        return found
+
+    for candidate in _known_windows_tool_paths(name):
+        if candidate.exists():
+            return str(candidate)
+    return name
+
+
+def _known_windows_tool_paths(name: str) -> list[Path]:
+    executable = name if name.lower().endswith(".exe") else f"{name}.exe"
+    candidates: list[Path] = []
+
+    program_files = os.environ.get("ProgramFiles")
+    if program_files:
+        candidates.append(Path(program_files) / "MKVToolNix" / executable)
+
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if local_app_data:
+        winget_root = Path(local_app_data) / "Microsoft" / "WinGet" / "Packages"
+        if winget_root.exists():
+            candidates.extend(winget_root.glob(f"Gyan.FFmpeg_*/*/bin/{executable}"))
+
+    return candidates

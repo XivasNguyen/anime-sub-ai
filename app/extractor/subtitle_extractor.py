@@ -8,7 +8,7 @@ from typing import Any
 from app.utils.subprocess_runner import ToolError, run_command
 
 
-ASS_CODECS = {"ass", "ssa", "substation alpha"}
+ASS_CODECS = {"ass", "ssa", "substation alpha", "substationalpha"}
 SRT_CODECS = {"subrip", "srt"}
 
 
@@ -36,7 +36,7 @@ def extract_subtitle(mkv_path: Path, output_dir: Path) -> Path:
         raise RuntimeError(f"No subtitle tracks found in {mkv_path}")
 
     selected = select_subtitle_track(tracks)
-    suffix = ".ass" if selected.codec.lower() in ASS_CODECS else ".srt"
+    suffix = ".ass" if _normalize_codec(selected.codec) in ASS_CODECS else ".srt"
     output_path = output_dir / f"{mkv_path.stem}.en{suffix}"
     try:
         run_command(["mkvextract", "tracks", str(mkv_path), f"{selected.id}:{output_path}"])
@@ -49,7 +49,7 @@ def extract_subtitle(mkv_path: Path, output_dir: Path) -> Path:
 
 def select_subtitle_track(tracks: list[SubtitleTrack]) -> SubtitleTrack:
     def score(track: SubtitleTrack) -> tuple[int, int]:
-        codec = track.codec.lower()
+        codec = _normalize_codec(track.codec)
         language = track.language.lower()
         english = language in {"eng", "en", "english"}
         if english and codec in ASS_CODECS:
@@ -63,6 +63,10 @@ def select_subtitle_track(tracks: list[SubtitleTrack]) -> SubtitleTrack:
         return (4, track.id)
 
     return sorted(tracks, key=score)[0]
+
+
+def _normalize_codec(codec: str) -> str:
+    return codec.lower().replace("_", " ").replace("-", " ").replace(" ", "")
 
 
 def _inspect_with_mkvmerge(mkv_path: Path) -> list[SubtitleTrack]:
@@ -123,4 +127,3 @@ def _ensure_utf8(path: Path) -> None:
         except UnicodeDecodeError:
             continue
     raise UnicodeDecodeError("utf-8", raw, 0, 1, f"Could not decode extracted subtitle as text: {path}")
-
