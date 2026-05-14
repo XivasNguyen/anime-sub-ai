@@ -27,3 +27,13 @@ mux:
 output:
   directory: output
   temp_directory: temp
+
+cache:
+  enabled: true
+  path: cache/translation_memory.sqlite
+
+knowledge:
+  enabled: false
+  cache_directory: cache/knowledge
+  spoiler_mode: no_spoiler
+  enable_web: false

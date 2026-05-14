@@ -27,3 +27,5 @@ venv/
 output/
 temp/
 cache/
+!app/cache/
+!app/cache/*.py

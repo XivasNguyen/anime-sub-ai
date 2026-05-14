@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pysubs2
 
+from app.glossary.glossary import Glossary
 from app.parser.ass_parser import ParsedSubtitle
 
 
@@ -36,11 +37,15 @@ def validate_ass_file(path: Path) -> ValidationReport:
     return report
 
 
-def validate_translations(parsed: ParsedSubtitle, translations: dict[int, str]) -> ValidationReport:
-    return validate_translation_lines(parsed.lines, translations)
+def validate_translations(
+    parsed: ParsedSubtitle,
+    translations: dict[int, str],
+    glossary: Glossary | None = None,
+) -> ValidationReport:
+    return validate_translation_lines(parsed.lines, translations, glossary=glossary)
 
 
-def validate_translation_lines(lines, translations: dict[int, str]) -> ValidationReport:
+def validate_translation_lines(lines, translations: dict[int, str], glossary: Glossary | None = None) -> ValidationReport:
     report = ValidationReport()
     if len(translations) != len(lines):
         report.errors.append(f"Line count mismatch: {len(lines)} input lines, {len(translations)} translations.")
@@ -65,6 +70,12 @@ def validate_translation_lines(lines, translations: dict[int, str]) -> Validatio
         words = ENGLISH_WORD_RE.findall(text_without_tags)
         if len(words) >= 5:
             report.warnings.append(f"Line {line.index} still appears mostly English.")
+        if line.end > line.start:
+            cps = len(text_without_tags) / ((line.end - line.start) / 1000)
+            if cps > 25:
+                report.warnings.append(f"Line {line.index} may be too long for its timing window.")
+        if glossary is not None:
+            _validate_glossary_terms(line.raw_text, translated, glossary, line.index, report)
 
     return report
 
@@ -83,3 +94,19 @@ def preserve_missing_ass_tags(lines, translations: dict[int, str]) -> dict[int, 
         if missing_tags:
             fixed[line.index] = "".join(missing_tags) + translated
     return fixed
+
+
+def _validate_glossary_terms(
+    source_text: str,
+    translated_text: str,
+    glossary: Glossary,
+    line_index: int,
+    report: ValidationReport,
+) -> None:
+    source_lower = source_text.lower()
+    translated_lower = translated_text.lower()
+    for term in glossary.terms:
+        if not term.protected:
+            continue
+        if term.source.lower() in source_lower and term.target.lower() not in translated_lower:
+            report.warnings.append(f"Line {line_index} may have changed protected glossary term: {term.source}")

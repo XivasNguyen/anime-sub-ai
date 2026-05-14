@@ -65,6 +65,20 @@ class OutputSettings:
 
 
 @dataclass
+class CacheSettings:
+    enabled: bool = True
+    path: Path = Path("cache/translation_memory.sqlite")
+
+
+@dataclass
+class KnowledgeSettings:
+    enabled: bool = False
+    cache_directory: Path = Path("cache/knowledge")
+    spoiler_mode: str = "no_spoiler"
+    enable_web: bool = False
+
+
+@dataclass
 class Settings:
     provider: str = "openai"
     openai: OpenAISettings = field(default_factory=OpenAISettings)
@@ -73,6 +87,8 @@ class Settings:
     translation: TranslationSettings = field(default_factory=TranslationSettings)
     mux: MuxSettings = field(default_factory=MuxSettings)
     output: OutputSettings = field(default_factory=OutputSettings)
+    cache: CacheSettings = field(default_factory=CacheSettings)
+    knowledge: KnowledgeSettings = field(default_factory=KnowledgeSettings)
 
 
 def load_settings(path: Path | None = None) -> Settings:
@@ -91,6 +107,8 @@ def load_settings(path: Path | None = None) -> Settings:
     translation_data = data.get("translation", {})
     mux_data = data.get("mux", {})
     output_data = data.get("output", {})
+    cache_data = data.get("cache", {})
+    knowledge_data = data.get("knowledge", {})
 
     return Settings(
         provider=data.get("provider", "openai"),
@@ -124,5 +142,15 @@ def load_settings(path: Path | None = None) -> Settings:
         output=OutputSettings(
             directory=Path(output_data.get("directory", "output")),
             temp_directory=Path(output_data.get("temp_directory", "temp")),
+        ),
+        cache=CacheSettings(
+            enabled=bool(cache_data.get("enabled", True)),
+            path=Path(cache_data.get("path", "cache/translation_memory.sqlite")),
+        ),
+        knowledge=KnowledgeSettings(
+            enabled=bool(knowledge_data.get("enabled", False)),
+            cache_directory=Path(knowledge_data.get("cache_directory", "cache/knowledge")),
+            spoiler_mode=str(knowledge_data.get("spoiler_mode", "no_spoiler")),
+            enable_web=bool(knowledge_data.get("enable_web", False)),
         ),
     )

@@ -2,17 +2,33 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import asyncio
 from pathlib import Path
 
+from app.cache.sqlite_cache import TranslationCache, chunk_cache_key
 from app.formatter.ass_formatter import rebuild_ass
+from app.glossary.glossary import build_glossary
+from app.knowledge.series_bible import infer_series_title, load_or_create_series_bible
 from app.parser.ass_parser import parse_ass
 from app.quality.validator import preserve_missing_ass_tags, validate_ass_file, validate_translations
+from app.translator.ass_mask import mask_ass_text, restore_ass_text
+from app.translator.base import PromptContext, PromptTerm, TranslationChunk, TranslationResult, TranslatorProvider
 from app.translator.chunker import chunk_subtitles
 from app.translator.factory import create_translator
 from app.translator.lmstudio_provider import LMStudioTranslator
 from app.translator.json_response import parse_translation_response
 from app.translator.ollama_provider import OllamaTranslator
 from app.config.settings import Settings
+from app.translator.pipeline import translate_lines
+
+
+class FakeTranslator(TranslatorProvider):
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def translate(self, chunk: TranslationChunk) -> list[TranslationResult]:
+        self.calls += 1
+        return [TranslationResult(line.index, f"VI {line.raw_text}") for line in chunk.lines]
 
 
 SAMPLE_ASS = """[Script Info]
@@ -73,6 +89,130 @@ class MvpTests(unittest.TestCase):
         """
         parsed = parse_translation_response(response, {1})
         self.assertEqual(parsed[0].translated_text, "Xin chào")
+
+    def test_parse_translation_response_repairs_trailing_comma(self) -> None:
+        parsed = parse_translation_response(
+            '{"translations":[{"index":1,"translated_text":"Xin chào",},],}',
+            {1},
+        )
+        self.assertEqual(parsed[0].translated_text, "Xin chào")
+
+    def test_ass_tag_mask_and_restore(self) -> None:
+        original = "{\\an8}Hello {\\i1}there\\Nfriend"
+        masked = mask_ass_text(original)
+        self.assertEqual(masked.text, "[[ASS_TAG_00]]Hello [[ASS_TAG_01]]there\\Nfriend")
+        restored = restore_ass_text("[[ASS_TAG_00]]Xin chào [[ASS_TAG_01]]bạn\\Nơi", original)
+        self.assertEqual(restored, "{\\an8}Xin chào {\\i1}bạn\\Nơi")
+
+    def test_sqlite_cache_round_trip_and_key_changes_by_glossary_version(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "sample.ass"
+            source.write_text(SAMPLE_ASS, encoding="utf-8")
+            parsed = parse_ass(source)
+            chunk = chunk_subtitles(
+                parsed.lines,
+                chunk_size=2,
+                prompt_context=PromptContext(
+                    series_title="Test",
+                    terms=[PromptTerm(source="Ayanokoji", target="Ayanokoji")],
+                    version="glossary-a",
+                ),
+            )[0]
+            key_a = chunk_cache_key(
+                chunk,
+                provider="lmstudio",
+                model="qwen",
+                prompt_version="p1",
+                glossary_version="glossary-a",
+                ass_version="a1",
+            )
+            key_b = chunk_cache_key(
+                chunk,
+                provider="lmstudio",
+                model="qwen",
+                prompt_version="p1",
+                glossary_version="glossary-b",
+                ass_version="a1",
+            )
+            self.assertNotEqual(key_a, key_b)
+
+            cache = TranslationCache(Path(temp) / "cache.sqlite")
+            cache.put_chunk(key_a, [TranslationResult(1, "Xin chào")], {"model": "qwen"})
+            cached = cache.get_chunk(key_a)
+            cache.close()
+            self.assertIsNotNone(cached)
+            assert cached is not None
+            self.assertEqual(cached[0].translated_text, "Xin chào")
+
+    def test_translate_lines_uses_cache_on_second_run(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "sample.ass"
+            source.write_text(SAMPLE_ASS, encoding="utf-8")
+            parsed = parse_ass(source)
+            cache = TranslationCache(Path(temp) / "cache.sqlite")
+            provider = FakeTranslator()
+
+            first = asyncio.run(
+                translate_lines(
+                    parsed.lines,
+                    provider,
+                    chunk_size=2,
+                    overlap_lines=0,
+                    max_concurrency=1,
+                    prompt_context=PromptContext(series_title="Test", version="v1"),
+                    cache=cache,
+                    provider_name="fake",
+                    model="fake-model",
+                )
+            )
+            second = asyncio.run(
+                translate_lines(
+                    parsed.lines,
+                    provider,
+                    chunk_size=2,
+                    overlap_lines=0,
+                    max_concurrency=1,
+                    prompt_context=PromptContext(series_title="Test", version="v1"),
+                    cache=cache,
+                    provider_name="fake",
+                    model="fake-model",
+                )
+            )
+            cache.close()
+            self.assertEqual(first, second)
+            self.assertEqual(provider.calls, 1)
+
+    def test_series_bible_cached_without_web(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            title = infer_series_title(Path("[SubsPlease] Example Anime S2 - 10 (1080p).mkv"))
+            self.assertEqual(title, "Example Anime")
+            bible = load_or_create_series_bible(title, Path(temp), enable_web=False)
+            loaded = load_or_create_series_bible(title, Path(temp), enable_web=False)
+            self.assertEqual(bible.title, loaded.title)
+
+    def test_glossary_extracts_repeated_terms_and_validates_protected_terms(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "sample.ass"
+            source.write_text(
+                SAMPLE_ASS
+                + "Dialogue: 0,0:00:06.00,0:00:07.00,Default,,0,0,0,,Ayanokoji is here.\n"
+                + "Dialogue: 0,0:00:08.00,0:00:09.00,Default,,0,0,0,,Ayanokoji-kun?\n",
+                encoding="utf-8",
+            )
+            parsed = parse_ass(source)
+            glossary = build_glossary(parsed.lines)
+            self.assertIn("Ayanokoji", {term.source for term in glossary.terms})
+            report = validate_translations(
+                parsed,
+                {
+                    1: "{\\an8}Cậu đúng là đồ ngốc!",
+                    2: "Tôi biết.",
+                    3: "Cậu ấy ở đây.",
+                    4: "Cậu ấy à?",
+                },
+                glossary=glossary,
+            )
+            self.assertTrue(any("protected glossary term" in warning for warning in report.warnings))
 
     def test_preserve_missing_ass_tags(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

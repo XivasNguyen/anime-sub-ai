@@ -30,7 +30,8 @@ class LMStudioTranslator(TranslatorProvider):
     async def _translate_once(self, chunk: TranslationChunk) -> list[TranslationResult]:
         system_prompt = (
             "Translate anime subtitle text from English to natural Vietnamese. "
-            "Preserve ASS tags exactly, including {\\...} tags and \\N line breaks. "
+            "ASS tags are masked as placeholders like [[ASS_TAG_00]]; preserve placeholders exactly. "
+            "Use the knowledge and glossary terms when relevant. "
             "Preserve names and honorifics when appropriate. "
             "Return only valid JSON with key translations. "
             "No reasoning, no explanations, no markdown."
