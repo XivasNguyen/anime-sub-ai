@@ -1,4 +1,4 @@
-provider: openai
+provider: lmstudio
 
 openai:
   api_key: env:OPENAI_API_KEY
@@ -9,14 +9,14 @@ ollama:
   model: env:OLLAMA_MODEL
 
 lmstudio:
-  base_url: env:LMSTUDIO_BASE_URL
-  model: env:LMSTUDIO_MODEL
-  api_key: env:LMSTUDIO_API_KEY
+  base_url: http://127.0.0.1:1234/v1
+  model: qwen2.5-7b-instruct-1m
+  api_key: lm-studio
 
 translation:
-  chunk_size: 12
+  chunk_size: 8
   overlap_lines: 2
-  max_concurrency: 3
+  max_concurrency: 1
   retry_count: 3
 
 mux:
