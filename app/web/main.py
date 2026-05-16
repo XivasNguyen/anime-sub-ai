@@ -23,6 +23,7 @@ from app.jobs.service import (
     start_job,
 )
 from app.translator.factory import SUPPORTED_PROVIDERS
+from app.translator.health import ProviderHealth, check_provider_health
 from app.utils.subprocess_runner import command_available
 
 
@@ -45,6 +46,11 @@ class JobRequest(BaseModel):
 
 class BenchmarkRequest(JobRequest):
     lines: int = 50
+
+
+class ProviderCheckRequest(BaseModel):
+    provider: str = "lmstudio"
+    model: str | None = None
 
 
 class GlossarySaveRequest(BaseModel):
@@ -90,18 +96,28 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=500, detail=f"Could not open file picker: {exc}") from exc
         return {"selected": bool(selected), "path": selected}
 
+    @app.post("/api/providers/check")
+    async def provider_check_api(request: ProviderCheckRequest) -> dict[str, Any]:
+        _validate_provider(request.provider)
+        health = await check_provider_health(load_settings(), request.provider, model=request.model)
+        return health.to_json()
+
     @app.get("/api/inspect")
     def inspect_api(video: str) -> dict[str, Any]:
+        video_path = _validate_video_path(video)
         try:
-            tracks = inspect_subtitles(Path(video))
+            tracks = inspect_subtitles(video_path)
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return {"tracks": [track.__dict__ for track in tracks]}
 
     @app.post("/api/jobs")
-    def create_translation_job(request: JobRequest) -> dict[str, str]:
+    async def create_translation_job(request: JobRequest) -> dict[str, str]:
         settings = load_settings()
         _validate_provider(request.provider)
+        _validate_job_request(request)
+        health = await check_provider_health(settings, request.provider, model=request.model)
+        _raise_if_provider_unavailable(health)
         options = _options_from_request(request, skip_mux=request.skip_mux)
         job_id = create_job(settings, options)
         thread = threading.Thread(target=_run_job, args=(job_id, options), daemon=True)
@@ -109,9 +125,14 @@ def create_app() -> FastAPI:
         return {"job_id": job_id}
 
     @app.post("/api/benchmark")
-    def benchmark_api(request: BenchmarkRequest) -> dict[str, str]:
+    async def benchmark_api(request: BenchmarkRequest) -> dict[str, str]:
         settings = load_settings()
         _validate_provider(request.provider)
+        _validate_job_request(request)
+        if request.lines < 1:
+            raise HTTPException(status_code=400, detail="Benchmark lines must be greater than 0.")
+        health = await check_provider_health(settings, request.provider, model=request.model)
+        _raise_if_provider_unavailable(health)
         options = _options_from_request(request, skip_mux=True)
         options.limit_lines = request.lines
         job_id = create_job(settings, options)
@@ -185,6 +206,34 @@ def create_app() -> FastAPI:
 def _validate_provider(provider: str) -> None:
     if provider.lower() not in SUPPORTED_PROVIDERS:
         raise HTTPException(status_code=400, detail=f"Unsupported provider: {provider}")
+
+
+def _raise_if_provider_unavailable(health: ProviderHealth) -> None:
+    if not health.available:
+        raise HTTPException(status_code=503, detail=health.to_json())
+
+
+def _validate_job_request(request: JobRequest) -> None:
+    _validate_video_path(request.video)
+    if request.batch_size is not None and request.batch_size < 1:
+        raise HTTPException(status_code=400, detail="Batch size must be greater than 0.")
+    if request.max_concurrency is not None and request.max_concurrency < 1:
+        raise HTTPException(status_code=400, detail="Concurrency must be greater than 0.")
+    if request.limit_lines is not None and request.limit_lines < 1:
+        raise HTTPException(status_code=400, detail="Limit lines must be greater than 0.")
+
+
+def _validate_video_path(video: str) -> Path:
+    if not video.strip():
+        raise HTTPException(status_code=400, detail="MKV path is required.")
+    path = Path(video.strip()).expanduser()
+    if not path.exists():
+        raise HTTPException(status_code=400, detail=f"MKV path does not exist: {path}")
+    if not path.is_file():
+        raise HTTPException(status_code=400, detail=f"MKV path is not a file: {path}")
+    if path.suffix.lower() != ".mkv":
+        raise HTTPException(status_code=400, detail="Input video must be an .mkv file.")
+    return path
 
 
 def _options_from_request(request: JobRequest, *, skip_mux: bool) -> TranslationJobOptions:

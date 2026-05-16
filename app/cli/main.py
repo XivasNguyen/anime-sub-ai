@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 import webbrowser
 
@@ -12,6 +13,7 @@ from app.muxer.mkv_muxer import mux_softsub
 from app.quality.validator import validate_ass_file
 from app.review.export import export_review_set
 from app.translator.factory import SUPPORTED_PROVIDERS
+from app.translator.health import check_provider_health
 
 app = typer.Typer(help="Anime AI subtitle pipeline MVP.")
 
@@ -68,6 +70,20 @@ def mux(
     typer.echo(str(result))
 
 
+@app.command("check-provider")
+def check_provider(
+    provider: str | None = typer.Option(None, "--provider"),
+    model: str | None = typer.Option(None, "--model"),
+) -> None:
+    """Check whether an AI provider is reachable and the selected model is available."""
+    settings = load_settings()
+    provider_name = _validate_provider_name(provider or settings.provider)
+    health = asyncio.run(check_provider_health(settings, provider_name, model=model))
+    typer.echo(health.message)
+    if not health.available:
+        raise typer.Exit(code=1)
+
+
 @app.command()
 def translate(
     video: Path,
@@ -95,9 +111,8 @@ def translate(
     """Extract, translate, rebuild, validate, and mux a Vietnamese softsub MKV."""
     del keep_en_sub, debug
     settings = load_settings()
-    provider_name = (provider or settings.provider).lower()
-    if provider_name not in SUPPORTED_PROVIDERS:
-        raise typer.BadParameter(f"Unsupported provider. Use one of: {', '.join(SUPPORTED_PROVIDERS)}")
+    provider_name = _validate_provider_name(provider or settings.provider)
+    _check_provider_or_exit(settings, provider_name, model)
 
     typer.echo("Starting translation job...")
     result = start_job(
@@ -151,9 +166,8 @@ def benchmark(
 ) -> None:
     """Benchmark provider/model batch sizes on a small subtitle slice."""
     settings = load_settings()
-    provider_name = (provider or settings.provider).lower()
-    if provider_name not in SUPPORTED_PROVIDERS:
-        raise typer.BadParameter(f"Unsupported provider. Use one of: {', '.join(SUPPORTED_PROVIDERS)}")
+    provider_name = _validate_provider_name(provider or settings.provider)
+    _check_provider_or_exit(settings, provider_name, model)
     sizes = [int(item.strip()) for item in batch_sizes.split(",") if item.strip()]
     typer.echo(f"Benchmarking {provider_name} for {lines} lines...")
     for size in sizes:
@@ -215,3 +229,18 @@ def export_review(
         limit_lines=limit_lines,
     )
     typer.echo(f"Wrote review set: {result}")
+
+
+def _validate_provider_name(provider: str) -> str:
+    provider_name = provider.lower()
+    if provider_name not in SUPPORTED_PROVIDERS:
+        raise typer.BadParameter(f"Unsupported provider. Use one of: {', '.join(SUPPORTED_PROVIDERS)}")
+    return provider_name
+
+
+def _check_provider_or_exit(settings, provider_name: str, model: str | None) -> None:
+    typer.echo(f"Checking {provider_name} provider...")
+    health = asyncio.run(check_provider_health(settings, provider_name, model=model))
+    if not health.available:
+        typer.echo(f"Provider unavailable: {health.message}", err=True)
+        raise typer.Exit(code=1)

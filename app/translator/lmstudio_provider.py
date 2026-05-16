@@ -6,12 +6,14 @@ from openai import AsyncOpenAI
 
 from app.translator.base import TranslationChunk, TranslationResult, TranslatorProvider
 from app.translator.json_response import TranslationResponseError, parse_translation_response
+from app.translator.openai_compat import normalize_openai_base_url
 from app.translator.prompt_builder import build_compact_user_prompt
 
 
 class LMStudioTranslator(TranslatorProvider):
     def __init__(self, base_url: str, model: str, api_key: str = "lm-studio", retry_count: int = 3) -> None:
-        self.client = AsyncOpenAI(base_url=base_url.rstrip("/"), api_key=api_key or "lm-studio")
+        self.base_url = normalize_openai_base_url(base_url)
+        self.client = AsyncOpenAI(base_url=self.base_url, api_key=api_key or "lm-studio")
         self.model = model
         self.retry_count = retry_count
 

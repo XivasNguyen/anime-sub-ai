@@ -22,7 +22,9 @@ from app.translator.factory import create_translator
 from app.translator.lmstudio_provider import LMStudioTranslator
 from app.translator.json_response import parse_translation_response
 from app.translator.ollama_provider import OllamaTranslator
-from app.config.settings import Settings
+from app.translator.openai_compat import normalize_openai_base_url
+from app.config.settings import OpenAISettings, Settings
+from app.translator.health import check_provider_health
 from app.translator.pipeline import translate_lines
 from app.web.main import create_app
 
@@ -277,6 +279,23 @@ class MvpTests(unittest.TestCase):
         translator = create_translator(settings, provider_name="lmstudio", model="google/gemma-3-12b")
         self.assertIsInstance(translator, LMStudioTranslator)
         self.assertEqual(translator.model, "google/gemma-3-12b")
+        self.assertEqual(translator.base_url, "http://localhost:1234/v1")
+
+    def test_normalize_openai_base_url_appends_v1_once(self) -> None:
+        self.assertEqual(normalize_openai_base_url("http://127.0.0.1:1234"), "http://127.0.0.1:1234/v1")
+        self.assertEqual(normalize_openai_base_url("http://127.0.0.1:1234/v1"), "http://127.0.0.1:1234/v1")
+        self.assertEqual(normalize_openai_base_url("http://host/api"), "http://host/api/v1")
+
+    def test_provider_health_rejects_missing_openai_key_without_network(self) -> None:
+        settings = Settings(provider="openai", openai=OpenAISettings(api_key=""))
+        health = asyncio.run(check_provider_health(settings, provider_name="openai", model="gpt-test"))
+        self.assertFalse(health.available)
+        self.assertIn("API key is missing", health.message)
+
+    def test_provider_health_rejects_unsupported_provider(self) -> None:
+        health = asyncio.run(check_provider_health(Settings(), provider_name="bad-provider"))
+        self.assertFalse(health.available)
+        self.assertIn("Unsupported provider", health.message)
 
     def test_web_dashboard_and_settings_routes(self) -> None:
         client = TestClient(create_app())
@@ -285,6 +304,20 @@ class MvpTests(unittest.TestCase):
         settings = client.get("/api/settings")
         self.assertEqual(settings.status_code, 200)
         self.assertIn("tools", settings.json())
+
+    def test_web_provider_check_rejects_unsupported_provider(self) -> None:
+        client = TestClient(create_app())
+        response = client.post("/api/providers/check", json={"provider": "bad-provider"})
+        self.assertEqual(response.status_code, 400)
+
+    def test_web_job_rejects_missing_video_before_provider_check(self) -> None:
+        client = TestClient(create_app())
+        response = client.post(
+            "/api/jobs",
+            json={"video": "", "provider": "lmstudio", "batch_size": 8, "max_concurrency": 1},
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("MKV path is required", response.json()["detail"])
 
 
 if __name__ == "__main__":

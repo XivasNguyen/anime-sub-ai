@@ -27,6 +27,7 @@ from app.quality.validator import (
 )
 from app.translator.base import PromptContext
 from app.translator.factory import create_translator
+from app.translator.health import check_provider_health, require_provider_available
 from app.translator.pipeline import PipelineStats, translate_lines
 
 
@@ -89,6 +90,20 @@ def start_job(settings: Settings, options: TranslationJobOptions, job_id: str | 
     output_mkv: Path | None = None
 
     try:
+        _validate_options(options)
+        if not options.dry_run:
+            _write_job_state(settings, job_id, "running", {"phase": "provider_check"})
+            health = asyncio.run(check_provider_health(settings, provider_name, model=model))
+            if not health.available:
+                _write_job_state(
+                    settings,
+                    job_id,
+                    "failed",
+                    {"phase": "provider_check", "error": health.message, "provider_health": health.to_json()},
+                )
+            require_provider_available(health)
+
+        _write_job_state(settings, job_id, "running", {"phase": "extract"})
         source_path = extract_subtitle(options.video, temp_dir)
         source_subtitle = str(source_path)
         parsed = parse_ass(source_path)
@@ -299,6 +314,23 @@ def _load_bible(settings: Settings, options: TranslationJobOptions) -> SeriesBib
         enable_web=enabled and enable_web,
         spoiler_mode=spoiler_mode,
     )
+
+
+def _validate_options(options: TranslationJobOptions) -> None:
+    if not options.video.exists():
+        raise ValueError(f"Input video does not exist: {options.video}")
+    if not options.video.is_file():
+        raise ValueError(f"Input video is not a file: {options.video}")
+    if options.video.suffix.lower() != ".mkv":
+        raise ValueError("Input video must be an .mkv file.")
+    if options.batch_size is not None and options.batch_size < 1:
+        raise ValueError("Batch size must be greater than 0.")
+    if options.max_concurrency is not None and options.max_concurrency < 1:
+        raise ValueError("Concurrency must be greater than 0.")
+    if options.start_line < 1:
+        raise ValueError("Start line must be greater than 0.")
+    if options.limit_lines is not None and options.limit_lines < 1:
+        raise ValueError("Limit lines must be greater than 0.")
 
 
 def _build_prompt_context(bible: SeriesBible, glossary: Glossary, selected_lines) -> PromptContext:

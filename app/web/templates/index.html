@@ -528,7 +528,7 @@
                   </div>
                 </div>
                 <div class="field">
-                  <label for="provider">Provider</label>
+                  <label for="provider">Provider <span id="providerHealthLabel">Unchecked</span></label>
                   <select id="provider">
                     {% for provider in providers %}
                     <option value="{{ provider }}" {% if provider == settings.provider %}selected{% endif %}>{{ provider }}</option>
@@ -564,6 +564,7 @@
 
               <div class="actions">
                 <button type="button" onclick="inspectVideo()">Inspect</button>
+                <button type="button" onclick="checkProvider()" class="secondary">Check Provider</button>
                 <button type="button" onclick="startBenchmark()" class="secondary">Benchmark</button>
                 <button type="button" onclick="startJob()">Translate</button>
                 <button type="button" onclick="cancelActiveJob()" class="secondary" id="cancelButton" disabled>Cancel</button>
@@ -733,6 +734,37 @@
       }
     }
 
+    async function checkProvider(silent = false) {
+      const body = payload();
+      const label = document.getElementById('providerHealthLabel');
+      label.textContent = 'Checking';
+      setReadyState('live', 'Checking');
+      if (!silent) setRaw('status', 'Checking provider...');
+      try {
+        const res = await fetch('/api/providers/check', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({provider: body.provider, model: body.model})
+        });
+        const data = await parseResponse(res);
+        if (!data.available) {
+          label.textContent = 'Unavailable';
+          setReadyState('bad', 'Provider');
+          setRaw('status', JSON.stringify(data, null, 2));
+          return false;
+        }
+        label.textContent = 'Available';
+        setReadyState('ok', 'Ready');
+        if (!silent) setRaw('status', JSON.stringify(data, null, 2));
+        return true;
+      } catch (error) {
+        label.textContent = 'Unavailable';
+        setReadyState('bad', 'Provider');
+        setRaw('status', providerCheckErrorMessage(error));
+        return false;
+      }
+    }
+
     async function selectMkvPath() {
       const button = document.getElementById('browseButton');
       button.disabled = true;
@@ -759,9 +791,12 @@
 
     async function startJob() {
       const body = payload();
-      setRaw('status', 'Creating translation job...');
-      setReadyState('live', 'Starting');
+      setRaw('status', 'Checking provider...');
+      setReadyState('live', 'Checking');
       try {
+        if (!(await checkProvider(true))) return;
+        setRaw('status', 'Creating translation job...');
+        setReadyState('live', 'Starting');
         const res = await fetch('/api/jobs', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
@@ -779,9 +814,12 @@
       const body = payload();
       body.lines = body.limit_lines || 50;
       body.skip_mux = true;
-      setRaw('benchmarkRaw', 'Creating benchmark job...');
-      setReadyState('live', 'Benchmark');
+      setRaw('benchmarkRaw', 'Checking provider...');
+      setReadyState('live', 'Checking');
       try {
+        if (!(await checkProvider(true))) return;
+        setRaw('benchmarkRaw', 'Creating benchmark job...');
+        setReadyState('live', 'Benchmark');
         const res = await fetch('/api/benchmark', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
@@ -941,8 +979,24 @@
 
     async function parseResponse(res) {
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
+      if (!res.ok) throw new Error(formatErrorDetail(data.detail || data));
       return data;
+    }
+
+    function formatErrorDetail(detail) {
+      if (typeof detail === 'string') return detail;
+      if (detail && typeof detail === 'object') {
+        if (detail.message) return detail.message;
+        return JSON.stringify(detail, null, 2);
+      }
+      return String(detail);
+    }
+
+    function providerCheckErrorMessage(error) {
+      if (error.message === 'Not Found') {
+        return 'Provider check endpoint is not available on this running web server. Restart the GUI server or open the newest port shown by the CLI.';
+      }
+      return error.message;
     }
 
     function setRaw(id, text) {
