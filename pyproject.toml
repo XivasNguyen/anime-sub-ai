@@ -1,6 +1,6 @@
 [project]
 name = "anime-sub-ai"
-version = "0.2.0"
+version = "0.3.0"
 description = "Local-first anime subtitle AI pipeline MVP"
 requires-python = ">=3.12"
 dependencies = [

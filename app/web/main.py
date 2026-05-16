@@ -82,6 +82,14 @@ def create_app() -> FastAPI:
             },
         }
 
+    @app.get("/api/dialog/mkv")
+    async def mkv_file_dialog_api() -> dict[str, str | bool]:
+        try:
+            selected = _pick_mkv_file()
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Could not open file picker: {exc}") from exc
+        return {"selected": bool(selected), "path": selected}
+
     @app.get("/api/inspect")
     def inspect_api(video: str) -> dict[str, Any]:
         try:
@@ -200,6 +208,23 @@ def _run_job(job_id: str, options: TranslationJobOptions) -> None:
         start_job(load_settings(), options, job_id=job_id)
     except Exception:
         pass
+
+
+def _pick_mkv_file() -> str:
+    import tkinter as tk
+    from tkinter import filedialog
+
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+    try:
+        selected = filedialog.askopenfilename(
+            title="Select MKV file",
+            filetypes=[("Matroska video", "*.mkv"), ("All files", "*.*")],
+        )
+    finally:
+        root.destroy()
+    return str(selected or "")
 
 
 app = create_app()
