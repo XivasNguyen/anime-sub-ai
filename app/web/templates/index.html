@@ -3,119 +3,895 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>anime-sub-ai</title>
+  <title>Anime Translate AIO</title>
   <style>
-    body { font-family: Segoe UI, Arial, sans-serif; margin: 0; background: #f6f7f9; color: #1f2328; }
-    header { background: #111827; color: white; padding: 16px 24px; }
-    main { max-width: 1180px; margin: 0 auto; padding: 20px; display: grid; gap: 16px; }
-    section { background: white; border: 1px solid #d8dee4; border-radius: 8px; padding: 16px; }
-    label { display: block; font-weight: 600; margin: 10px 0 4px; }
-    input, select { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #c9d1d9; border-radius: 6px; }
-    button { border: 0; background: #2563eb; color: white; padding: 9px 12px; border-radius: 6px; cursor: pointer; margin-right: 8px; }
-    button.secondary { background: #4b5563; }
-    pre { background: #0b1020; color: #d1e7ff; padding: 12px; border-radius: 6px; overflow: auto; }
-    .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+    :root {
+      color-scheme: dark;
+      --bg: #070a12;
+      --bg-2: #0b1020;
+      --panel: #101827;
+      --panel-2: #0d1524;
+      --panel-3: #111f33;
+      --line: #20304b;
+      --line-soft: #17233a;
+      --text: #edf7ff;
+      --muted: #93a9c4;
+      --dim: #627692;
+      --cyan: #23d3ff;
+      --blue: #5487ff;
+      --violet: #9d6bff;
+      --green: #33e6a2;
+      --amber: #ffc857;
+      --red: #ff6b8a;
+      --shadow: 0 18px 42px rgba(0, 0, 0, 0.35);
+      --radius: 8px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      min-width: 320px;
+      margin: 0;
+      background:
+        linear-gradient(rgba(35, 211, 255, 0.055) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(84, 135, 255, 0.045) 1px, transparent 1px),
+        linear-gradient(145deg, #05070d 0%, #08111f 48%, #080b14 100%);
+      background-size: 42px 42px, 42px 42px, auto;
+      color: var(--text);
+      font-family: "Segoe UI", Inter, Arial, sans-serif;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    button, input, select { font: inherit; }
+
+    button {
+      min-height: 36px;
+      border: 1px solid transparent;
+      border-radius: 7px;
+      padding: 0 13px;
+      color: #06101c;
+      background: linear-gradient(135deg, var(--cyan), var(--blue));
+      box-shadow: 0 0 0 1px rgba(35, 211, 255, 0.18), 0 12px 30px rgba(35, 141, 255, 0.18);
+      cursor: pointer;
+      font-weight: 700;
+    }
+
+    button:hover { filter: brightness(1.08); }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    button.secondary {
+      color: var(--text);
+      background: rgba(17, 31, 51, 0.9);
+      border-color: var(--line);
+      box-shadow: none;
+    }
+
+    input, select {
+      width: 100%;
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: rgba(7, 13, 25, 0.86);
+      color: var(--text);
+      padding: 8px 10px;
+      outline: none;
+    }
+
+    input:focus, select:focus {
+      border-color: var(--cyan);
+      box-shadow: 0 0 0 3px rgba(35, 211, 255, 0.12);
+    }
+
+    label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0;
+      margin-bottom: 6px;
+    }
+
+    pre {
+      max-height: 290px;
+      margin: 0;
+      padding: 12px;
+      overflow: auto;
+      border: 1px solid var(--line-soft);
+      border-radius: var(--radius);
+      background: rgba(4, 8, 16, 0.72);
+      color: #cbefff;
+      font: 12px/1.5 Consolas, "Cascadia Mono", monospace;
+    }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 244px minmax(0, 1fr);
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      padding: 18px 14px;
+      border-right: 1px solid rgba(47, 68, 105, 0.72);
+      background: rgba(6, 10, 18, 0.78);
+      backdrop-filter: blur(18px);
+    }
+
+    .brand {
+      display: grid;
+      grid-template-columns: 38px 1fr;
+      gap: 10px;
+      align-items: center;
+      padding: 6px 6px 18px;
+    }
+
+    .mark {
+      display: grid;
+      place-items: center;
+      width: 38px;
+      height: 38px;
+      border: 1px solid rgba(35, 211, 255, 0.42);
+      border-radius: 8px;
+      background: linear-gradient(145deg, rgba(35, 211, 255, 0.18), rgba(157, 107, 255, 0.2));
+      color: var(--cyan);
+      font-weight: 900;
+      box-shadow: 0 0 24px rgba(35, 211, 255, 0.18);
+    }
+
+    .brand-title {
+      font-size: 15px;
+      font-weight: 800;
+    }
+
+    .brand-subtitle {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .nav {
+      display: grid;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .nav button {
+      justify-content: flex-start;
+      width: 100%;
+      color: var(--muted);
+      background: transparent;
+      border-color: transparent;
+      box-shadow: none;
+      text-align: left;
+      font-weight: 700;
+    }
+
+    .nav button.active {
+      color: var(--text);
+      background: linear-gradient(90deg, rgba(35, 211, 255, 0.18), rgba(84, 135, 255, 0.08));
+      border-color: rgba(35, 211, 255, 0.26);
+    }
+
+    .side-footer {
+      position: absolute;
+      right: 14px;
+      bottom: 16px;
+      left: 14px;
+      display: grid;
+      gap: 8px;
+      color: var(--dim);
+      font-size: 12px;
+    }
+
+    .content {
+      min-width: 0;
+      padding: 22px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+
+    h1, h2, h3, p { margin: 0; }
+
+    h1 {
+      font-size: 24px;
+      line-height: 1.15;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      font-size: 16px;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+
+    .muted { color: var(--muted); }
+
+    .status-strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 28px;
+      padding: 4px 9px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(13, 21, 36, 0.78);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--dim);
+      box-shadow: 0 0 12px currentColor;
+    }
+
+    .ok { color: var(--green); }
+    .warn { color: var(--amber); }
+    .bad { color: var(--red); }
+    .live { color: var(--cyan); }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(0, 1.42fr) minmax(320px, 0.88fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    .panel {
+      border: 1px solid rgba(47, 68, 105, 0.72);
+      border-radius: var(--radius);
+      background: linear-gradient(180deg, rgba(16, 24, 39, 0.92), rgba(10, 16, 28, 0.92));
+      box-shadow: var(--shadow);
+    }
+
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 58px;
+      padding: 15px 16px;
+      border-bottom: 1px solid var(--line-soft);
+    }
+
+    .panel-body {
+      padding: 16px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 13px;
+    }
+
+    .grid.three {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .field.full { grid-column: 1 / -1; }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 9px;
+      margin-top: 14px;
+    }
+
+    .switches {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .check {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 34px;
+      padding: 6px 10px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: rgba(7, 13, 25, 0.72);
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .check input {
+      width: 16px;
+      min-height: 16px;
+      accent-color: var(--cyan);
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 13px;
+    }
+
+    .metric {
+      min-height: 78px;
+      padding: 12px;
+      border: 1px solid var(--line-soft);
+      border-radius: var(--radius);
+      background: rgba(7, 13, 25, 0.55);
+    }
+
+    .metric strong {
+      display: block;
+      margin-top: 6px;
+      overflow: hidden;
+      color: var(--text);
+      font-size: 20px;
+      line-height: 1.1;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .progress-shell {
+      height: 10px;
+      overflow: hidden;
+      border: 1px solid rgba(35, 211, 255, 0.18);
+      border-radius: 999px;
+      background: rgba(4, 8, 16, 0.9);
+    }
+
+    .progress-bar {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, var(--cyan), var(--violet));
+      box-shadow: 0 0 22px rgba(35, 211, 255, 0.48);
+      transition: width 220ms ease;
+    }
+
+    .summary {
+      display: grid;
+      gap: 10px;
+      margin-top: 13px;
+    }
+
+    .summary-row {
+      display: grid;
+      grid-template-columns: 130px minmax(0, 1fr);
+      gap: 10px;
+      align-items: start;
+      padding: 9px 0;
+      border-bottom: 1px solid rgba(32, 48, 75, 0.56);
+    }
+
+    .summary-row:last-child { border-bottom: 0; }
+    .summary-row span { color: var(--muted); font-weight: 700; }
+    .summary-row code { overflow-wrap: anywhere; color: #dff7ff; }
+
+    .list {
+      display: grid;
+      gap: 9px;
+      margin-top: 10px;
+    }
+
+    .item {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      padding: 10px 11px;
+      border: 1px solid var(--line-soft);
+      border-radius: var(--radius);
+      background: rgba(7, 13, 25, 0.55);
+    }
+
+    .item-main {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .tabs {
+      display: none;
+      gap: 16px;
+    }
+
+    .tabs.active { display: grid; }
+
+    .hidden { display: none !important; }
+
+    @media (max-width: 980px) {
+      .app { grid-template-columns: 1fr; }
+      .sidebar {
+        position: static;
+        height: auto;
+        border-right: 0;
+        border-bottom: 1px solid rgba(47, 68, 105, 0.72);
+      }
+      .nav { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+      .side-footer { position: static; margin-top: 14px; }
+      .workspace { grid-template-columns: 1fr; }
+      .topbar { align-items: flex-start; flex-direction: column; }
+      .status-strip { justify-content: flex-start; }
+    }
+
+    @media (max-width: 680px) {
+      .content { padding: 16px; }
+      .grid, .grid.three, .metrics { grid-template-columns: 1fr; }
+      .nav { grid-template-columns: 1fr 1fr; }
+      .summary-row { grid-template-columns: 1fr; }
+      .item { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
-  <header>
-    <h1>anime-sub-ai</h1>
-    <div>Local subtitle translation dashboard</div>
-  </header>
-  <main>
-    <section>
-      <h2>Job</h2>
-      <label>MKV Path</label>
-      <input id="video" placeholder="D:\path\episode.mkv">
-      <div class="grid">
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="mark">AI</div>
         <div>
-          <label>Provider</label>
-          <select id="provider">
-            {% for provider in providers %}
-            <option value="{{ provider }}" {% if provider == settings.provider %}selected{% endif %}>{{ provider }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div>
-          <label>Model</label>
-          <input id="model" value="{{ settings.lmstudio.model }}">
-        </div>
-        <div>
-          <label>Batch Size</label>
-          <input id="batch_size" type="number" value="{{ settings.translation.chunk_size }}">
-        </div>
-        <div>
-          <label>Concurrency</label>
-          <input id="max_concurrency" type="number" value="{{ settings.translation.max_concurrency }}">
-        </div>
-        <div>
-          <label>Limit Lines</label>
-          <input id="limit_lines" type="number" placeholder="optional">
+          <div class="brand-title">Anime Sub AI</div>
+          <div class="brand-subtitle">Local subtitle forge</div>
         </div>
       </div>
-      <p>
-        <label><input id="skip_mux" type="checkbox"> Skip mux</label>
-        <label><input id="repair_warnings" type="checkbox"> Repair warnings</label>
-      </p>
-      <button onclick="inspectVideo()">Inspect</button>
-      <button onclick="startBenchmark()" class="secondary">Benchmark</button>
-      <button onclick="startJob()">Translate</button>
-    </section>
+      <nav class="nav" aria-label="Workspace">
+        <button class="active" data-tab="translate">Translate</button>
+        <button data-tab="benchmark">Benchmark</button>
+        <button data-tab="review">Review</button>
+        <button data-tab="outputs">Outputs</button>
+        <button data-tab="settings">Settings</button>
+      </nav>
+      <div class="side-footer">
+        <span class="pill"><span class="dot live"></span><span id="runtimeProvider">{{ settings.provider }}</span></span>
+        <span class="pill"><span class="dot live"></span><span id="runtimeModel">{{ settings.lmstudio.model }}</span></span>
+      </div>
+    </aside>
 
-    <section>
-      <h2>Status</h2>
-      <pre id="status">Idle</pre>
-    </section>
+    <main class="content">
+      <div class="topbar">
+        <div>
+          <h1>Subtitle Translation Console</h1>
+          <p class="muted">MKV to Vietnamese ASS softsubs.</p>
+        </div>
+        <div class="status-strip" id="toolStatus">
+          <span class="pill"><span class="dot"></span>Loading tools</span>
+        </div>
+      </div>
 
-    <section>
-      <h2>Outputs</h2>
-      <button onclick="loadOutputs()" class="secondary">Refresh Outputs</button>
-      <pre id="outputs"></pre>
-    </section>
-  </main>
+      <section class="tabs active" id="tab-translate">
+        <div class="workspace">
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>Translation Job</h2>
+                <p class="muted">Episode run control.</p>
+              </div>
+              <span class="pill"><span class="dot live"></span>Ready</span>
+            </div>
+            <div class="panel-body">
+              <div class="grid">
+                <div class="field full">
+                  <label for="video">MKV Path</label>
+                  <input id="video" placeholder="D:\path\episode.mkv" autocomplete="off">
+                </div>
+                <div class="field">
+                  <label for="provider">Provider</label>
+                  <select id="provider">
+                    {% for provider in providers %}
+                    <option value="{{ provider }}" {% if provider == settings.provider %}selected{% endif %}>{{ provider }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="model">Model</label>
+                  <input id="model" value="{{ settings.lmstudio.model }}" autocomplete="off">
+                </div>
+              </div>
+
+              <div class="grid three" style="margin-top: 13px;">
+                <div class="field">
+                  <label for="batch_size">Batch Size</label>
+                  <input id="batch_size" type="number" min="1" value="{{ settings.translation.chunk_size }}">
+                </div>
+                <div class="field">
+                  <label for="max_concurrency">Concurrency</label>
+                  <input id="max_concurrency" type="number" min="1" value="{{ settings.translation.max_concurrency }}">
+                </div>
+                <div class="field">
+                  <label for="limit_lines">Limit Lines</label>
+                  <input id="limit_lines" type="number" min="1" placeholder="optional">
+                </div>
+              </div>
+
+              <div class="switches">
+                <label class="check"><input id="skip_mux" type="checkbox">Skip mux</label>
+                <label class="check"><input id="repair_warnings" type="checkbox">Repair warnings</label>
+                <label class="check"><input id="force_retranslate" type="checkbox">Force retranslate</label>
+              </div>
+
+              <div class="actions">
+                <button type="button" onclick="inspectVideo()">Inspect</button>
+                <button type="button" onclick="startBenchmark()" class="secondary">Benchmark</button>
+                <button type="button" onclick="startJob()">Translate</button>
+                <button type="button" onclick="cancelActiveJob()" class="secondary" id="cancelButton" disabled>Cancel</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>Live Progress</h2>
+                <p class="muted" id="jobIdLabel">No active job</p>
+              </div>
+              <span class="pill"><span class="dot" id="statusDot"></span><span id="statusLabel">Idle</span></span>
+            </div>
+            <div class="panel-body">
+              <div class="metrics">
+                <div class="metric"><span class="muted">Phase</span><strong id="metricPhase">Idle</strong></div>
+                <div class="metric"><span class="muted">Lines</span><strong id="metricLines">0</strong></div>
+                <div class="metric"><span class="muted">Chunk</span><strong id="metricChunk">0/0</strong></div>
+                <div class="metric"><span class="muted">Elapsed</span><strong id="metricElapsed">0s</strong></div>
+              </div>
+              <div class="progress-shell"><div class="progress-bar" id="progressBar"></div></div>
+              <div class="summary">
+                <div class="summary-row"><span>Last warning</span><code id="lastWarning">None</code></div>
+                <div class="summary-row"><span>Report</span><code id="reportPath">None</code></div>
+                <div class="summary-row"><span>Output MKV</span><code id="outputPath">None</code></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Inspect Result</h2>
+              <p class="muted">Subtitle tracks and job payload.</p>
+            </div>
+          </div>
+          <div class="panel-body">
+            <pre id="status">Idle</pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="tabs" id="tab-benchmark">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Benchmark Lab</h2>
+              <p class="muted">Small sample timing.</p>
+            </div>
+            <button type="button" onclick="startBenchmark()">Run Benchmark</button>
+          </div>
+          <div class="panel-body">
+            <div class="metrics">
+              <div class="metric"><span class="muted">Sample Lines</span><strong id="benchLines">50</strong></div>
+              <div class="metric"><span class="muted">Provider</span><strong id="benchProvider">{{ settings.provider }}</strong></div>
+              <div class="metric"><span class="muted">Batch</span><strong id="benchBatch">{{ settings.translation.chunk_size }}</strong></div>
+              <div class="metric"><span class="muted">Speed</span><strong id="benchSpeed">Pending</strong></div>
+            </div>
+            <pre id="benchmarkRaw">Benchmark results will appear here.</pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="tabs" id="tab-review">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Quality Review</h2>
+              <p class="muted">Report diagnostics.</p>
+            </div>
+            <button type="button" onclick="loadReports()">Refresh Reports</button>
+          </div>
+          <div class="panel-body">
+            <div class="list" id="reportList"></div>
+            <pre id="reportDetail" style="margin-top: 12px;">No report loaded.</pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="tabs" id="tab-outputs">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Generated Files</h2>
+              <p class="muted">Output directory.</p>
+            </div>
+            <button type="button" onclick="loadOutputs()">Refresh Outputs</button>
+          </div>
+          <div class="panel-body">
+            <div class="list" id="outputList"></div>
+            <pre id="outputs" style="margin-top: 12px;"></pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="tabs" id="tab-settings">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Runtime Settings</h2>
+              <p class="muted">Local backend snapshot.</p>
+            </div>
+            <button type="button" onclick="loadSettings()">Refresh Settings</button>
+          </div>
+          <div class="panel-body">
+            <pre id="settingsRaw">Loading settings...</pre>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
 
   <script>
+    let activeJobId = null;
+    let activeEvents = null;
+    let latestProgress = null;
+
+    const tabButtons = document.querySelectorAll('.nav button');
+    tabButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        tabButtons.forEach((item) => item.classList.remove('active'));
+        document.querySelectorAll('.tabs').forEach((panel) => panel.classList.remove('active'));
+        button.classList.add('active');
+        document.getElementById(`tab-${button.dataset.tab}`).classList.add('active');
+        if (button.dataset.tab === 'outputs') loadOutputs();
+        if (button.dataset.tab === 'review') loadReports();
+        if (button.dataset.tab === 'settings') loadSettings();
+      });
+    });
+
     function payload() {
       const limit = document.getElementById('limit_lines').value;
-      return {
-        video: document.getElementById('video').value,
+      const body = {
+        video: document.getElementById('video').value.trim(),
         provider: document.getElementById('provider').value,
-        model: document.getElementById('model').value || null,
+        model: document.getElementById('model').value.trim() || null,
         batch_size: Number(document.getElementById('batch_size').value) || null,
         max_concurrency: Number(document.getElementById('max_concurrency').value) || null,
         limit_lines: limit ? Number(limit) : null,
         skip_mux: document.getElementById('skip_mux').checked,
-        repair_warnings: document.getElementById('repair_warnings').checked
+        repair_warnings: document.getElementById('repair_warnings').checked,
+        force_retranslate: document.getElementById('force_retranslate').checked
       };
+      document.getElementById('runtimeProvider').textContent = body.provider;
+      document.getElementById('runtimeModel').textContent = body.model || 'default';
+      document.getElementById('benchProvider').textContent = body.provider;
+      document.getElementById('benchBatch').textContent = body.batch_size || '-';
+      document.getElementById('benchLines').textContent = body.limit_lines || 50;
+      return body;
     }
+
     async function inspectVideo() {
-      const video = encodeURIComponent(document.getElementById('video').value);
-      const res = await fetch(`/api/inspect?video=${video}`);
-      document.getElementById('status').textContent = JSON.stringify(await res.json(), null, 2);
+      const video = encodeURIComponent(document.getElementById('video').value.trim());
+      setRaw('status', 'Inspecting...');
+      try {
+        const res = await fetch(`/api/inspect?video=${video}`);
+        const data = await parseResponse(res);
+        setRaw('status', JSON.stringify(data, null, 2));
+      } catch (error) {
+        setRaw('status', error.message);
+      }
     }
+
     async function startJob() {
-      const res = await fetch('/api/jobs', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload())});
-      watch((await res.json()).job_id);
+      const body = payload();
+      setRaw('status', 'Creating translation job...');
+      try {
+        const res = await fetch('/api/jobs', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(body)
+        });
+        watch((await parseResponse(res)).job_id);
+      } catch (error) {
+        setRaw('status', error.message);
+        updateProgress({status: 'failed', phase: 'request failed', last_warning: error.message});
+      }
     }
+
     async function startBenchmark() {
       const body = payload();
       body.lines = body.limit_lines || 50;
       body.skip_mux = true;
-      const res = await fetch('/api/benchmark', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
-      watch((await res.json()).job_id);
+      setRaw('benchmarkRaw', 'Creating benchmark job...');
+      try {
+        const res = await fetch('/api/benchmark', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(body)
+        });
+        watch((await parseResponse(res)).job_id, true);
+      } catch (error) {
+        setRaw('benchmarkRaw', error.message);
+        updateProgress({status: 'failed', phase: 'request failed', last_warning: error.message});
+      }
     }
-    function watch(jobId) {
-      const events = new EventSource(`/api/jobs/${jobId}/events`);
-      events.onmessage = (event) => {
+
+    async function cancelActiveJob() {
+      if (!activeJobId) return;
+      document.getElementById('cancelButton').disabled = true;
+      await fetch(`/api/jobs/${activeJobId}/cancel`, {method: 'POST'});
+    }
+
+    function watch(jobId, benchmark = false) {
+      if (activeEvents) activeEvents.close();
+      activeJobId = jobId;
+      document.getElementById('cancelButton').disabled = false;
+      document.getElementById('jobIdLabel').textContent = jobId;
+      activeEvents = new EventSource(`/api/jobs/${jobId}/events`);
+      activeEvents.onmessage = (event) => {
         const data = JSON.parse(event.data);
-        document.getElementById('status').textContent = JSON.stringify(data, null, 2);
-        if (['completed', 'failed', 'cancelled'].includes(data.status)) events.close();
+        latestProgress = data;
+        updateProgress(data);
+        setRaw('status', JSON.stringify(data, null, 2));
+        if (benchmark) {
+          setRaw('benchmarkRaw', JSON.stringify(data, null, 2));
+          updateBenchmarkMetric(data);
+        }
+        if (['completed', 'failed', 'cancelled'].includes(data.status)) {
+          activeEvents.close();
+          document.getElementById('cancelButton').disabled = true;
+          loadOutputs();
+          loadReports();
+        }
+      };
+      activeEvents.onerror = () => {
+        setRaw('status', 'Lost connection to job event stream.');
+        document.getElementById('cancelButton').disabled = true;
       };
     }
+
+    function updateProgress(data) {
+      const payload = data.payload || data;
+      const status = data.status || 'idle';
+      const phase = payload.phase || status;
+      const translated = payload.translated_lines ?? payload.lines_translated ?? 0;
+      const total = payload.selected_lines ?? payload.total_lines ?? payload.limit_lines ?? 0;
+      const currentChunk = payload.completed_chunks ?? payload.current_chunk ?? 0;
+      const totalChunks = payload.chunk_count ?? payload.total_chunks ?? 0;
+      const elapsed = payload.elapsed_seconds ?? 0;
+      const percent = payload.progress_percent ?? (total ? Math.min(100, Math.round((translated / total) * 100)) : 0);
+
+      document.getElementById('statusLabel').textContent = status;
+      document.getElementById('metricPhase').textContent = phase;
+      document.getElementById('metricLines').textContent = total ? `${translated}/${total}` : String(translated);
+      document.getElementById('metricChunk').textContent = `${currentChunk}/${totalChunks}`;
+      document.getElementById('metricElapsed').textContent = `${Math.round(elapsed)}s`;
+      document.getElementById('progressBar').style.width = `${Math.max(0, Math.min(100, percent))}%`;
+      document.getElementById('lastWarning').textContent = payload.last_warning || payload.error || 'None';
+      document.getElementById('reportPath').textContent = payload.report || payload.report_path || 'None';
+      document.getElementById('outputPath').textContent = payload.output_video || payload.output_path || payload.output_mkv || 'None';
+
+      const dot = document.getElementById('statusDot');
+      dot.className = 'dot';
+      if (status === 'completed') dot.classList.add('ok');
+      else if (status === 'failed') dot.classList.add('bad');
+      else if (status === 'cancelled') dot.classList.add('warn');
+      else if (status !== 'idle') dot.classList.add('live');
+    }
+
+    function updateBenchmarkMetric(data) {
+      const payload = data.payload || data;
+      const elapsed = Number(payload.elapsed_seconds || 0);
+      const translated = Number(payload.translated_lines || payload.lines_translated || 0);
+      if (elapsed > 0 && translated > 0) {
+        document.getElementById('benchSpeed').textContent = `${(translated / elapsed).toFixed(2)} l/s`;
+      }
+    }
+
     async function loadOutputs() {
       const [outputs, reports] = await Promise.all([fetch('/api/outputs'), fetch('/api/reports')]);
-      document.getElementById('outputs').textContent = JSON.stringify({outputs: await outputs.json(), reports: await reports.json()}, null, 2);
+      const outputData = await outputs.json();
+      const reportData = await reports.json();
+      renderList('outputList', outputData.outputs || [], 'file');
+      setRaw('outputs', JSON.stringify({outputs: outputData, reports: reportData}, null, 2));
     }
+
+    async function loadReports() {
+      const res = await fetch('/api/reports');
+      const data = await res.json();
+      renderList('reportList', data.reports || [], 'report');
+    }
+
+    async function loadReport(path) {
+      const name = path.split(/[\\/]/).pop();
+      const res = await fetch(`/api/reports/${encodeURIComponent(name)}`);
+      setRaw('reportDetail', JSON.stringify(await parseResponse(res), null, 2));
+    }
+
+    async function loadSettings() {
+      const res = await fetch('/api/settings');
+      const data = await res.json();
+      renderToolStatus(data.tools || {});
+      setRaw('settingsRaw', JSON.stringify(data, null, 2));
+      document.getElementById('runtimeProvider').textContent = data.provider || 'provider';
+      document.getElementById('runtimeModel').textContent = data.lmstudio?.model || 'model';
+    }
+
+    function renderToolStatus(tools) {
+      const labels = [
+        ['ffmpeg', 'FFmpeg'],
+        ['mkvmerge', 'MKVToolNix'],
+        ['mkvextract', 'MKVExtract']
+      ];
+      document.getElementById('toolStatus').innerHTML = labels.map(([key, label]) => {
+        const ok = Boolean(tools[key]);
+        return `<span class="pill"><span class="dot ${ok ? 'ok' : 'bad'}"></span>${label}</span>`;
+      }).join('');
+    }
+
+    function renderList(elementId, items, kind) {
+      const root = document.getElementById(elementId);
+      if (!items.length) {
+        root.innerHTML = '<div class="item"><div class="item-main muted">No files found.</div></div>';
+        return;
+      }
+      root.innerHTML = items.map((item) => {
+        const safe = escapeHtml(item);
+        const action = kind === 'report'
+          ? `<button type="button" class="secondary" data-report="${safe}">Open</button>`
+          : '<span class="pill"><span class="dot ok"></span>Ready</span>';
+        return `<div class="item"><div class="item-main" title="${safe}">${safe}</div>${action}</div>`;
+      }).join('');
+      if (kind === 'report') {
+        root.querySelectorAll('[data-report]').forEach((button) => {
+          button.addEventListener('click', () => loadReport(button.dataset.report));
+        });
+      }
+    }
+
+    async function parseResponse(res) {
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
+      return data;
+    }
+
+    function setRaw(id, text) {
+      document.getElementById(id).textContent = text;
+    }
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, (char) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      }[char]));
+    }
+
+    loadSettings();
   </script>
 </body>
 </html>
