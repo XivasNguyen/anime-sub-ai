@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>anime-sub-ai</title>
+  <style>
+    body { font-family: Segoe UI, Arial, sans-serif; margin: 0; background: #f6f7f9; color: #1f2328; }
+    header { background: #111827; color: white; padding: 16px 24px; }
+    main { max-width: 1180px; margin: 0 auto; padding: 20px; display: grid; gap: 16px; }
+    section { background: white; border: 1px solid #d8dee4; border-radius: 8px; padding: 16px; }
+    label { display: block; font-weight: 600; margin: 10px 0 4px; }
+    input, select { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #c9d1d9; border-radius: 6px; }
+    button { border: 0; background: #2563eb; color: white; padding: 9px 12px; border-radius: 6px; cursor: pointer; margin-right: 8px; }
+    button.secondary { background: #4b5563; }
+    pre { background: #0b1020; color: #d1e7ff; padding: 12px; border-radius: 6px; overflow: auto; }
+    .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>anime-sub-ai</h1>
+    <div>Local subtitle translation dashboard</div>
+  </header>
+  <main>
+    <section>
+      <h2>Job</h2>
+      <label>MKV Path</label>
+      <input id="video" placeholder="D:\path\episode.mkv">
+      <div class="grid">
+        <div>
+          <label>Provider</label>
+          <select id="provider">
+            {% for provider in providers %}
+            <option value="{{ provider }}" {% if provider == settings.provider %}selected{% endif %}>{{ provider }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label>Model</label>
+          <input id="model" value="{{ settings.lmstudio.model }}">
+        </div>
+        <div>
+          <label>Batch Size</label>
+          <input id="batch_size" type="number" value="{{ settings.translation.chunk_size }}">
+        </div>
+        <div>
+          <label>Concurrency</label>
+          <input id="max_concurrency" type="number" value="{{ settings.translation.max_concurrency }}">
+        </div>
+        <div>
+          <label>Limit Lines</label>
+          <input id="limit_lines" type="number" placeholder="optional">
+        </div>
+      </div>
+      <p>
+        <label><input id="skip_mux" type="checkbox"> Skip mux</label>
+        <label><input id="repair_warnings" type="checkbox"> Repair warnings</label>
+      </p>
+      <button onclick="inspectVideo()">Inspect</button>
+      <button onclick="startBenchmark()" class="secondary">Benchmark</button>
+      <button onclick="startJob()">Translate</button>
+    </section>
+
+    <section>
+      <h2>Status</h2>
+      <pre id="status">Idle</pre>
+    </section>
+
+    <section>
+      <h2>Outputs</h2>
+      <button onclick="loadOutputs()" class="secondary">Refresh Outputs</button>
+      <pre id="outputs"></pre>
+    </section>
+  </main>
+
+  <script>
+    function payload() {
+      const limit = document.getElementById('limit_lines').value;
+      return {
+        video: document.getElementById('video').value,
+        provider: document.getElementById('provider').value,
+        model: document.getElementById('model').value || null,
+        batch_size: Number(document.getElementById('batch_size').value) || null,
+        max_concurrency: Number(document.getElementById('max_concurrency').value) || null,
+        limit_lines: limit ? Number(limit) : null,
+        skip_mux: document.getElementById('skip_mux').checked,
+        repair_warnings: document.getElementById('repair_warnings').checked
+      };
+    }
+    async function inspectVideo() {
+      const video = encodeURIComponent(document.getElementById('video').value);
+      const res = await fetch(`/api/inspect?video=${video}`);
+      document.getElementById('status').textContent = JSON.stringify(await res.json(), null, 2);
+    }
+    async function startJob() {
+      const res = await fetch('/api/jobs', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload())});
+      watch((await res.json()).job_id);
+    }
+    async function startBenchmark() {
+      const body = payload();
+      body.lines = body.limit_lines || 50;
+      body.skip_mux = true;
+      const res = await fetch('/api/benchmark', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+      watch((await res.json()).job_id);
+    }
+    function watch(jobId) {
+      const events = new EventSource(`/api/jobs/${jobId}/events`);
+      events.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        document.getElementById('status').textContent = JSON.stringify(data, null, 2);
+        if (['completed', 'failed', 'cancelled'].includes(data.status)) events.close();
+      };
+    }
+    async function loadOutputs() {
+      const [outputs, reports] = await Promise.all([fetch('/api/outputs'), fetch('/api/reports')]);
+      document.getElementById('outputs').textContent = JSON.stringify({outputs: await outputs.json(), reports: await reports.json()}, null, 2);
+    }
+  </script>
+</body>
+</html>

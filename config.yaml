@@ -37,3 +37,6 @@ knowledge:
   cache_directory: cache/knowledge
   spoiler_mode: no_spoiler
   enable_web: false
+
+glossary:
+  path: glossary/default.json

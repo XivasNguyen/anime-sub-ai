@@ -1,0 +1,16 @@
+{
+  "terms": [
+    {
+      "source": "Ayanokoji",
+      "target": "Ayanokoji",
+      "note": "Character name",
+      "protected": true
+    },
+    {
+      "source": "senpai",
+      "target": "senpai",
+      "note": "Preserve common anime honorific unless series glossary overrides it.",
+      "protected": true
+    }
+  ]
+}

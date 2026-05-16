@@ -23,6 +23,10 @@ class TranslationReport:
     cache_misses: int = 0
     cache_writes: int = 0
     chunk_count: int = 0
+    completed_chunks: int = 0
+    retry_splits: int = 0
+    chunk_timings: list[float] = field(default_factory=list)
+    diagnostics: list[dict[str, Any]] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     knowledge: dict[str, Any] = field(default_factory=dict)

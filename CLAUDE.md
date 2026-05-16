@@ -16,7 +16,7 @@ Guidance for Claude Code and similar agents working in this repository.
 - MKV softsub muxing
 - validation
 
-Do not add OCR, vision AI, Jellyfin/Plex integration, or local LLM management unless the user explicitly asks. A future desktop GUI is expected, so preserve the backend boundary in `app/jobs/service.py`.
+Do not add OCR, vision AI, Jellyfin/Plex integration, or local LLM management unless the user explicitly asks. The local web GUI should remain a thin shell around `app/jobs/service.py`.
 
 ## Important Commands
 
@@ -122,6 +122,10 @@ Current mitigations:
 - SQLite cache and job state for resumable chunk reuse.
 - JSON report beside generated subtitles.
 - Optional cached series knowledge base and auto glossary.
+- Manual glossary support.
+- Per-line quality diagnostics.
+- Local web GUI shell.
+- Windows release scaffolding.
 
 ## Production-Ready Direction
 
@@ -138,9 +142,9 @@ Next features:
 
 1. Full real-episode E2E run and playback review.
 2. Small MKV integration fixture for CI.
-3. Manual glossary override file.
-4. Better warning quality and fewer false positives.
-5. Desktop GUI shell around the job service.
+3. Better warning quality and fewer false positives.
+4. Polished GUI review editor.
+5. Full Windows package smoke test.
 
 ## Git Hygiene
 

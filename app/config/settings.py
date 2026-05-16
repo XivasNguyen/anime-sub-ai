@@ -79,6 +79,11 @@ class KnowledgeSettings:
 
 
 @dataclass
+class GlossarySettings:
+    path: Path = Path("glossary/default.json")
+
+
+@dataclass
 class Settings:
     provider: str = "openai"
     openai: OpenAISettings = field(default_factory=OpenAISettings)
@@ -89,6 +94,7 @@ class Settings:
     output: OutputSettings = field(default_factory=OutputSettings)
     cache: CacheSettings = field(default_factory=CacheSettings)
     knowledge: KnowledgeSettings = field(default_factory=KnowledgeSettings)
+    glossary: GlossarySettings = field(default_factory=GlossarySettings)
 
 
 def load_settings(path: Path | None = None) -> Settings:
@@ -109,6 +115,7 @@ def load_settings(path: Path | None = None) -> Settings:
     output_data = data.get("output", {})
     cache_data = data.get("cache", {})
     knowledge_data = data.get("knowledge", {})
+    glossary_data = data.get("glossary", {})
 
     return Settings(
         provider=data.get("provider", "openai"),
@@ -152,5 +159,8 @@ def load_settings(path: Path | None = None) -> Settings:
             cache_directory=Path(knowledge_data.get("cache_directory", "cache/knowledge")),
             spoiler_mode=str(knowledge_data.get("spoiler_mode", "no_spoiler")),
             enable_web=bool(knowledge_data.get("enable_web", False)),
+        ),
+        glossary=GlossarySettings(
+            path=Path(glossary_data.get("path", "glossary/default.json")),
         ),
     )

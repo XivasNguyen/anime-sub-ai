@@ -13,11 +13,12 @@ from app.cache.sqlite_cache import TranslationCache
 from app.config.settings import Settings
 from app.extractor.subtitle_extractor import extract_subtitle
 from app.formatter.ass_formatter import rebuild_ass
-from app.glossary.glossary import Glossary, build_glossary
+from app.glossary.glossary import Glossary, build_glossary, load_manual_glossary, merge_glossaries
 from app.jobs.report import TranslationReport
 from app.knowledge.series_bible import SeriesBible, infer_series_title, load_or_create_series_bible
 from app.muxer.mkv_muxer import mux_softsub
 from app.parser.ass_parser import parse_ass
+from app.quality.report import build_quality_report
 from app.quality.validator import (
     preserve_missing_ass_tags,
     validate_ass_file,
@@ -48,6 +49,8 @@ class TranslationJobOptions:
     resume: bool = True
     force_retranslate: bool = False
     cache_path: Path | None = None
+    repair_warnings: bool = False
+    glossary_path: Path | None = None
 
 
 @dataclass
@@ -124,7 +127,9 @@ def start_job(settings: Settings, options: TranslationJobOptions, job_id: str | 
         _write_job_state(settings, job_id, "running", {"phase": "research"})
         bible = _load_bible(settings, options)
         warnings.extend(bible.warnings)
-        glossary = build_glossary(parsed.lines, bible)
+        auto_glossary = build_glossary(parsed.lines, bible)
+        manual_glossary = load_manual_glossary(options.glossary_path or settings.glossary.path)
+        glossary = merge_glossaries(manual_glossary, auto_glossary)
 
         cache_path = options.cache_path or settings.cache.path
         if settings.cache.enabled:
@@ -145,11 +150,46 @@ def start_job(settings: Settings, options: TranslationJobOptions, job_id: str | 
                 model=model,
                 force_retranslate=options.force_retranslate or not options.resume,
                 stats=stats,
+                progress_callback=lambda payload: _write_job_state(
+                    settings,
+                    job_id,
+                    "running",
+                    {
+                        "phase": "translate",
+                        "selected_lines": len(selected_lines),
+                        "translated_lines": payload.get("completed_chunks", 0)
+                        * (options.batch_size or settings.translation.chunk_size),
+                        "can_cancel": True,
+                        **payload,
+                    },
+                ),
             )
         )
         translations = preserve_missing_ass_tags(selected_lines, translations)
 
         _write_job_state(settings, job_id, "running", {"phase": "validate"})
+        quality = build_quality_report(selected_lines, translations, glossary=glossary)
+        if options.repair_warnings and quality.warning_line_indexes():
+            _write_job_state(settings, job_id, "running", {"phase": "repair", "warning_lines": sorted(quality.warning_line_indexes())})
+            repair_lines = [line for line in selected_lines if line.index in quality.warning_line_indexes()]
+            repaired = asyncio.run(
+                translate_lines(
+                    repair_lines,
+                    create_translator(settings, provider_name=provider_name, model=model),
+                    chunk_size=1,
+                    overlap_lines=0,
+                    max_concurrency=1,
+                    prompt_context_builder=lambda lines: _build_prompt_context(bible, glossary, lines),
+                    cache=cache,
+                    provider_name=provider_name,
+                    model=model,
+                    force_retranslate=True,
+                    stats=stats,
+                )
+            )
+            translations.update(preserve_missing_ass_tags(repair_lines, repaired))
+            quality = build_quality_report(selected_lines, translations, glossary=glossary)
+
         validation = validate_translation_lines(selected_lines, translations, glossary=glossary)
         warnings.extend(validation.warnings)
         validation.raise_for_errors()
@@ -193,6 +233,7 @@ def start_job(settings: Settings, options: TranslationJobOptions, job_id: str | 
             total_lines=len(parsed.lines),
             glossary=glossary,
             bible=bible,
+            diagnostics=quality.to_json(),
         )
         report_path = (output_subtitle or output_dir / f"{options.video.stem}.vi.ass").with_suffix(".report.json")
         report.write(report_path)
@@ -218,6 +259,7 @@ def start_job(settings: Settings, options: TranslationJobOptions, job_id: str | 
             total_lines=0,
             glossary=None,
             bible=None,
+            diagnostics=[],
         )
         report_path = settings.output.directory / f"{options.video.stem}.{job_id}.failed.report.json"
         report.write(report_path)
@@ -289,6 +331,7 @@ def _build_report(
     total_lines: int,
     glossary: Glossary | None,
     bible: SeriesBible | None,
+    diagnostics: list[dict[str, Any]] | None = None,
 ) -> TranslationReport:
     cache_stats = cache.stats if cache is not None else None
     return TranslationReport(
@@ -307,6 +350,10 @@ def _build_report(
         cache_misses=cache_stats.misses if cache_stats else 0,
         cache_writes=cache_stats.writes if cache_stats else 0,
         chunk_count=stats.chunk_count,
+        completed_chunks=stats.completed_chunks,
+        retry_splits=stats.retry_splits,
+        chunk_timings=stats.chunk_timings,
+        diagnostics=diagnostics or [],
         warnings=warnings,
         errors=errors,
         knowledge={
@@ -324,6 +371,7 @@ def _build_report(
             "skip_mux": options.skip_mux,
             "resume": options.resume,
             "force_retranslate": options.force_retranslate,
+            "repair_warnings": options.repair_warnings,
         },
     )
 

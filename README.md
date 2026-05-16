@@ -21,14 +21,19 @@ Implemented:
 - Optional cached series knowledge base plus auto-extracted glossary
 - ASS tag masking before translation and deterministic restoration after translation
 - Basic local-model JSON repair for common malformed responses
+- Local web GUI with FastAPI/Jinja2
+- Per-line quality diagnostics in JSON reports
+- Manual glossary file support
+- Human review set export
+- Windows PyInstaller build and GitHub release scaffolding
 
 Not production-complete yet:
 
-- Full GUI shell around the job/progress API
+- Polished GUI review editor UX
 - Robust JSON repair for every malformed local-model output
 - Full end-to-end quality review on a completed real episode
 - Batch season processing
-- GUI, OCR, vision AI, Plex/Jellyfin integration, local LLM management UI
+- OCR, vision AI, Plex/Jellyfin integration, local LLM management UI
 
 ## Getting Started
 Install Python dependencies:
@@ -52,6 +57,12 @@ Run the MVP pipeline:
 
 ```bash
 python -m app translate "episode.mkv"
+```
+
+Start the local web GUI:
+
+```bash
+python -m app web
 ```
 
 Use OpenAI:
@@ -112,6 +123,8 @@ Useful local options:
 - `--max-concurrency N`: concurrent translation requests. For LM Studio, `1` is usually safest.
 - `--resume/--no-resume`: reuse or bypass completed cached chunks.
 - `--force-retranslate`: ignore cached translations for this run.
+- `--repair-warnings`: run a second translation pass only for lines flagged by quality warnings.
+- `--glossary-path PATH`: use a manual glossary JSON file.
 - `--series-title NAME`: override filename-based title inference for knowledge/glossary.
 - `--knowledge`: enable cached series knowledge enrichment.
 - `--knowledge-web`: allow one cached web metadata lookup for the series.
@@ -127,7 +140,7 @@ python -m app benchmark "episode.mkv" \
   --batch-sizes 6,8,10,12
 ```
 
-Each translate run writes a JSON report next to the generated `.vi.ass` with timings, cache stats, warnings, knowledge metadata, and output paths.
+Each translate run writes a JSON report next to the generated `.vi.ass` with timings, cache stats, warnings, per-line diagnostics, knowledge metadata, and output paths.
 
 Current benchmark notes are in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
@@ -138,6 +151,7 @@ python -m app inspect "episode.mkv"
 python -m app extract "episode.mkv"
 python -m app validate "output/episode.vi.ass"
 python -m app mux "episode.mkv" "output/episode.vi.ass"
+python -m app export-review "temp/episode.en.ass" "output/episode.vi.ass" --output review/episode.json
 ```
 
 ## How The Engine Works
@@ -160,6 +174,52 @@ MKV input
 ```
 
 The translation provider abstraction lives under `app/translator/`. New providers should implement `TranslatorProvider` from `app/translator/base.py` and be registered in `app/translator/factory.py`.
+
+## Manual Glossary
+
+Manual glossary terms live in `glossary/default.json` by default:
+
+```json
+{
+  "terms": [
+    {
+      "source": "Ayanokoji",
+      "target": "Ayanokoji",
+      "note": "Character name",
+      "protected": true
+    }
+  ]
+}
+```
+
+Glossary precedence:
+
+```text
+manual glossary > cached series bible > auto-detected terms
+```
+
+## Windows Build And Release
+
+Build a Windows package:
+
+```powershell
+.\scripts\build_windows.ps1
+```
+
+Run smoke checks:
+
+```powershell
+.\scripts\smoke_windows.ps1
+```
+
+The Windows release does not bundle FFmpeg or MKVToolNix. Install them separately:
+
+```powershell
+winget install Gyan.FFmpeg
+winget install MoritzBunkus.MKVToolNix
+```
+
+GitHub releases are built from tags named `v*` by `.github/workflows/release.yml`.
 
 ## Current Problem
 

@@ -71,13 +71,12 @@ Observed:
 - Local models sometimes drop ASS override tags.
 - Local models may mix non-Vietnamese text into a translation.
 - Retry splitting improves reliability but increases time.
-- No translation cache exists yet, so failed full runs redo completed chunks.
+- Translation cache and retry splitting reduce rerun cost, but malformed single-line responses can still fail.
 
 ## Next Optimization Work
 
-1. Add SQLite translation cache keyed by provider/model/source chunk/prompt version.
-2. Persist per-chunk progress so interrupted runs resume.
-3. Add JSON repair pass for malformed local output.
-4. Add a provider benchmark command that tests several batch sizes automatically.
-5. Add a fast quality report for untranslated English and non-Vietnamese output.
-6. Test smaller models such as `gemma-3-4b-it` only if they can complete 50 lines under 30 seconds and pass validation.
+1. Strengthen JSON repair for malformed single-line responses.
+2. Add a polished GUI review editor for diagnostics.
+3. Build a golden review set for 30-50 representative lines.
+4. Test smaller models such as `gemma-3-4b-it` only if they can complete 50 lines under 30 seconds and pass validation.
+5. Run full-episode E2E after benchmark confidence and review set quality are acceptable.

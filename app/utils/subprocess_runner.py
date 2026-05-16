@@ -44,7 +44,8 @@ def run_command(args: list[str], cwd: Path | None = None) -> CommandResult:
 
 def command_available(name: str) -> bool:
     try:
-        run_command([name, "--version"])
+        version_arg = "-version" if name.lower() in {"ffmpeg", "ffprobe", "ffplay"} else "--version"
+        run_command([name, version_arg])
     except ToolError:
         return False
     return True

@@ -12,8 +12,8 @@ MKV with English ASS subtitles
 -> original MKV remuxed with Vietnamese softsub track
 ```
 
-Keep the scope focused. Do not add GUI, OCR, vision AI, Plex/Jellyfin integration, or local LLM management UI unless explicitly requested.
-The backend is now intentionally shaped so a future desktop GUI can call the same local job service, but no GUI shell exists yet.
+Keep the scope focused. Do not add OCR, vision AI, Plex/Jellyfin integration, or local LLM management UI unless explicitly requested.
+The local web GUI must call the same job service as the CLI; do not duplicate pipeline logic in web routes.
 
 ## Current Architecture
 
@@ -37,6 +37,9 @@ Main modules:
 - `app/jobs/report.py`: machine-readable JSON translation reports.
 - `app/knowledge/series_bible.py`: optional cached series metadata/knowledge base.
 - `app/glossary/glossary.py`: auto-extracted glossary and protected terms.
+- `app/quality/report.py`: per-line quality diagnostics.
+- `app/review/export.py`: human review/golden set export.
+- `app/web/main.py`: FastAPI local web GUI and API.
 - `app/formatter/ass_formatter.py`: ASS rebuild.
 - `app/quality/validator.py`: integrity checks, glossary warnings, timing-length warnings, ASS tag reinjection fallback.
 - `app/muxer/mkv_muxer.py`: MKV softsub muxing.
@@ -115,8 +118,8 @@ Remaining priorities:
 1. Full real-episode E2E run and review, including muxed MKV playback.
 2. Small generated MKV integration fixture for CI.
 3. Better subtitle quality heuristics with fewer false positives.
-4. Optional manual glossary file editing/override.
-5. Desktop GUI shell around `app/jobs/service.py`.
+4. Polished GUI review editor.
+5. Full Windows release smoke with packaged executable.
 
 ## Test Commands
 
@@ -125,6 +128,7 @@ python -m unittest discover -s tests
 python -m compileall app
 python -m app translate --help
 python -m app benchmark --help
+python -m app web --help
 ```
 
 For local LM Studio benchmark:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import webbrowser
 
 import typer
 
@@ -9,6 +10,7 @@ from app.extractor.subtitle_extractor import extract_subtitle, inspect_subtitles
 from app.jobs.service import TranslationJobOptions, start_job
 from app.muxer.mkv_muxer import mux_softsub
 from app.quality.validator import validate_ass_file
+from app.review.export import export_review_set
 from app.translator.factory import SUPPORTED_PROVIDERS
 
 app = typer.Typer(help="Anime AI subtitle pipeline MVP.")
@@ -81,6 +83,8 @@ def translate(
     resume: bool = typer.Option(True, "--resume/--no-resume"),
     force_retranslate: bool = typer.Option(False, "--force-retranslate"),
     cache_path: Path | None = typer.Option(None, "--cache-path"),
+    glossary_path: Path | None = typer.Option(None, "--glossary-path"),
+    repair_warnings: bool = typer.Option(False, "--repair-warnings"),
     series_title: str | None = typer.Option(None, "--series-title"),
     knowledge: bool | None = typer.Option(None, "--knowledge/--no-knowledge"),
     knowledge_web: bool | None = typer.Option(None, "--knowledge-web/--no-knowledge-web"),
@@ -116,6 +120,8 @@ def translate(
             resume=resume,
             force_retranslate=force_retranslate,
             cache_path=cache_path,
+            glossary_path=glossary_path,
+            repair_warnings=repair_warnings,
         ),
     )
     for warning in result.report.warnings:
@@ -173,3 +179,39 @@ def benchmark(
             f"est382={estimated_382:.1f}s, warnings={len(result.report.warnings)}, "
             f"cache_hits={result.report.cache_hits}"
         )
+
+
+@app.command()
+def web(
+    host: str = typer.Option("127.0.0.1", "--host"),
+    port: int = typer.Option(7860, "--port"),
+    open_browser: bool = typer.Option(True, "--open-browser/--no-open-browser"),
+) -> None:
+    """Start the local web GUI."""
+    import uvicorn
+
+    url = f"http://{host}:{port}"
+    if open_browser:
+        webbrowser.open(url)
+    uvicorn.run("app.web.main:app", host=host, port=port, reload=False)
+
+
+@app.command("export-review")
+def export_review(
+    source_ass: Path,
+    translated_ass: Path,
+    output: Path = typer.Option(Path("review/review_set.json"), "--output", "-o"),
+    output_format: str = typer.Option("json", "--format"),
+    start_line: int = typer.Option(1, "--start-line", min=1),
+    limit_lines: int | None = typer.Option(None, "--limit-lines", min=1),
+) -> None:
+    """Export source/translation pairs for human review or golden sets."""
+    result = export_review_set(
+        source_ass,
+        translated_ass,
+        output,
+        output_format=output_format,
+        start_line=start_line,
+        limit_lines=limit_lines,
+    )
+    typer.echo(f"Wrote review set: {result}")

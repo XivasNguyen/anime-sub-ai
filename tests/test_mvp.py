@@ -3,14 +3,18 @@ from __future__ import annotations
 import tempfile
 import unittest
 import asyncio
+import json
 from pathlib import Path
+from fastapi.testclient import TestClient
 
 from app.cache.sqlite_cache import TranslationCache, chunk_cache_key
 from app.formatter.ass_formatter import rebuild_ass
-from app.glossary.glossary import build_glossary
+from app.glossary.glossary import build_glossary, load_manual_glossary, merge_glossaries
 from app.knowledge.series_bible import infer_series_title, load_or_create_series_bible
 from app.parser.ass_parser import parse_ass
+from app.quality.report import build_quality_report
 from app.quality.validator import preserve_missing_ass_tags, validate_ass_file, validate_translations
+from app.review.export import export_review_set
 from app.translator.ass_mask import mask_ass_text, restore_ass_text
 from app.translator.base import PromptContext, PromptTerm, TranslationChunk, TranslationResult, TranslatorProvider
 from app.translator.chunker import chunk_subtitles
@@ -20,6 +24,7 @@ from app.translator.json_response import parse_translation_response
 from app.translator.ollama_provider import OllamaTranslator
 from app.config.settings import Settings
 from app.translator.pipeline import translate_lines
+from app.web.main import create_app
 
 
 class FakeTranslator(TranslatorProvider):
@@ -212,7 +217,32 @@ class MvpTests(unittest.TestCase):
                 },
                 glossary=glossary,
             )
-            self.assertTrue(any("protected glossary term" in warning for warning in report.warnings))
+            self.assertTrue(any("protected glossary term" in warning.lower() for warning in report.warnings))
+
+    def test_manual_glossary_overrides_auto_terms(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "glossary.json"
+            path.write_text(
+                json.dumps({"terms": [{"source": "Ayanokoji", "target": "Ayanokouji", "protected": True}]}),
+                encoding="utf-8",
+            )
+            manual = load_manual_glossary(path)
+            auto = build_glossary([])
+            merged = merge_glossaries(manual, auto)
+            self.assertEqual(merged.terms[0].target, "Ayanokouji")
+
+    def test_quality_report_flags_cjk_and_placeholder_leak(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "sample.ass"
+            source.write_text(SAMPLE_ASS, encoding="utf-8")
+            parsed = parse_ass(source)
+            report = build_quality_report(
+                parsed.lines[:1],
+                {1: "{\\an8}Xin chào [[ASS_TAG_00]] 你好"},
+            )
+            codes = {item.code for item in report.diagnostics}
+            self.assertIn("placeholder_leak", codes)
+            self.assertIn("cjk_leakage", codes)
 
     def test_preserve_missing_ass_tags(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -222,6 +252,19 @@ class MvpTests(unittest.TestCase):
 
             fixed = preserve_missing_ass_tags(parsed.lines[:1], {1: "Cậu tới muộn rồi."})
             self.assertEqual(fixed[1], "{\\an8}Cậu tới muộn rồi.")
+
+    def test_export_review_set_json(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "source.ass"
+            translated = Path(temp) / "translated.ass"
+            output = Path(temp) / "review.json"
+            source.write_text(SAMPLE_ASS, encoding="utf-8")
+            translated.write_text(SAMPLE_ASS.replace("You're an idiot!", "Cậu đúng là đồ ngốc!"), encoding="utf-8")
+
+            export_review_set(source, translated, output, limit_lines=1)
+            rows = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(rows[0]["index"], 1)
+            self.assertIn("Cậu đúng là đồ ngốc!", rows[0]["translated_text"])
 
     def test_create_ollama_translator(self) -> None:
         settings = Settings(provider="ollama")
@@ -234,6 +277,14 @@ class MvpTests(unittest.TestCase):
         translator = create_translator(settings, provider_name="lmstudio", model="google/gemma-3-12b")
         self.assertIsInstance(translator, LMStudioTranslator)
         self.assertEqual(translator.model, "google/gemma-3-12b")
+
+    def test_web_dashboard_and_settings_routes(self) -> None:
+        client = TestClient(create_app())
+        dashboard = client.get("/")
+        self.assertEqual(dashboard.status_code, 200)
+        settings = client.get("/api/settings")
+        self.assertEqual(settings.status_code, 200)
+        self.assertIn("tools", settings.json())
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ import asyncio
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Any
 
 from app.parser.ass_parser import SubtitleLine
 from app.cache.sqlite_cache import TranslationCache, chunk_cache_key
@@ -34,6 +35,7 @@ async def translate_lines(
     model: str = "",
     force_retranslate: bool = False,
     stats: PipelineStats | None = None,
+    progress_callback: Callable[[dict[str, Any]], None] | None = None,
 ) -> dict[int, str]:
     chunks = chunk_subtitles(
         lines,
@@ -57,6 +59,14 @@ async def translate_lines(
     async def translate_chunk(chunk_index: int) -> list[TranslationResult]:
         async with semaphore:
             started = time.perf_counter()
+            if progress_callback is not None:
+                progress_callback(
+                    {
+                        "current_chunk": chunk_index + 1,
+                        "total_chunks": len(chunks),
+                        "completed_chunks": stats.completed_chunks if stats else 0,
+                    }
+                )
             print(f"Translating chunk {chunk_index + 1}/{len(chunks)}")
             result = await _translate_chunk_with_cache(
                 provider,
@@ -71,6 +81,15 @@ async def translate_lines(
             if stats is not None:
                 stats.completed_chunks += 1
                 stats.chunk_timings.append(elapsed)
+            if progress_callback is not None:
+                progress_callback(
+                    {
+                        "current_chunk": chunk_index + 1,
+                        "total_chunks": len(chunks),
+                        "completed_chunks": stats.completed_chunks if stats else chunk_index + 1,
+                        "last_chunk_seconds": elapsed,
+                    }
+                )
             print(f"Completed chunk {chunk_index + 1}/{len(chunks)} in {elapsed:.1f}s")
             return result
 

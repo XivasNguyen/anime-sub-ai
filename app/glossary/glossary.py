@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from app.knowledge.series_bible import SeriesBible
 from app.parser.ass_parser import SubtitleLine
@@ -164,3 +166,39 @@ def build_glossary(lines: list[SubtitleLine], bible: SeriesBible | None = None) 
         terms.setdefault(source_key, GlossaryTerm(source=source, target=source, note=f"Auto-detected {count}x"))
 
     return Glossary(terms=sorted(terms.values(), key=lambda item: item.source.lower()))
+
+
+def load_manual_glossary(path: Path) -> Glossary:
+    if not path.exists():
+        return Glossary()
+    data = json.loads(path.read_text(encoding="utf-8"))
+    raw_terms = data.get("terms", data) if isinstance(data, dict) else data
+    terms: list[GlossaryTerm] = []
+
+    if isinstance(raw_terms, dict):
+        for source, target in raw_terms.items():
+            terms.append(GlossaryTerm(source=str(source), target=str(target), note="Manual glossary"))
+    elif isinstance(raw_terms, list):
+        for item in raw_terms:
+            if not isinstance(item, dict):
+                continue
+            source = str(item.get("source", "")).strip()
+            if not source:
+                continue
+            terms.append(
+                GlossaryTerm(
+                    source=source,
+                    target=str(item.get("target", source)).strip() or source,
+                    note=str(item.get("note", "Manual glossary")),
+                    protected=bool(item.get("protected", True)),
+                )
+            )
+    return Glossary(terms=terms)
+
+
+def merge_glossaries(*glossaries: Glossary) -> Glossary:
+    merged: dict[str, GlossaryTerm] = {}
+    for glossary in reversed(glossaries):
+        for term in glossary.terms:
+            merged[term.source.lower()] = term
+    return Glossary(terms=sorted(merged.values(), key=lambda item: item.source.lower()))

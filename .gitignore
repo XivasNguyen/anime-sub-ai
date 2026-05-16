@@ -27,5 +27,11 @@ venv/
 output/
 temp/
 cache/
+review/
 !app/cache/
 !app/cache/*.py
+
+# Build artifacts
+build/
+dist/
+*.spec
