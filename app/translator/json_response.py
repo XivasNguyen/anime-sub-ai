@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from app.translator.base import TranslationResult
@@ -72,14 +73,17 @@ def _repair_json(content: str) -> str:
     text = content.strip()
     text = text.replace("\ufeff", "")
     text = _extract_json_object(text)
+    text = _repair_invalid_string_escapes(text)
     text = _remove_trailing_commas(text)
     text = _balance_brackets(text)
     return text
 
 
-def _remove_trailing_commas(text: str) -> str:
-    import re
+def _repair_invalid_string_escapes(text: str) -> str:
+    return re.sub(r'\\(?!["\\/bfnrtu])', "", text)
 
+
+def _remove_trailing_commas(text: str) -> str:
     return re.sub(r",(\s*[}\]])", r"\1", text)
 
 

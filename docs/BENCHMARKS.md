@@ -42,6 +42,7 @@ Do not use embedding models for translation.
 | LM Studio | `qwen2.5-7b-instruct-1m` | 50 | 12 | 1 | `24.6s` | Similar speed, but bigger chunks later showed reliability risk. |
 | LM Studio | `qwen2.5-7b-instruct-1m` | 100 | 8 | 1 | `54.7s` | Translation completed but validation caught dropped ASS tag before tag reinjection was added. |
 | LM Studio | `qwen2.5-7b-instruct-1m` | 100 | 8 | 1 | `87.1s` | Succeeded after tag reinjection and split retry; forecast about 5.5-6 minutes full episode. |
+| LM Studio | `gemma-3-4b-it` | 361 | 8 | 1 | `263.7s` | Completed full NEEDY GIRL OVERDOSE ep. 7 under 5 minutes with `--no-dual-source`; 0 critical errors, 57 warnings, quality still stiff. |
 
 ## Interpretation
 
@@ -72,11 +73,13 @@ Observed:
 - Local models may mix non-Vietnamese text into a translation.
 - Retry splitting improves reliability but increases time.
 - Translation cache and retry splitting reduce rerun cost, but malformed single-line responses can still fail.
+- `gemma-3-4b-it` meets the speed target but still leaves English fragments, inconsistent pronoun/register choices, and high-CPS lines.
+- Dual-source ASR is blocked on Windows CUDA setups that do not have the required cuBLAS runtime available.
 
 ## Next Optimization Work
 
-1. Strengthen JSON repair for malformed single-line responses.
-2. Add a polished GUI review editor for diagnostics.
-3. Build a golden review set for 30-50 representative lines.
-4. Test smaller models such as `gemma-3-4b-it` only if they can complete 50 lines under 30 seconds and pass validation.
-5. Run full-episode E2E after benchmark confidence and review set quality are acceptable.
+1. Fix Windows CUDA ASR runtime and benchmark `--dual-source` with `turbo`.
+2. Build a character/persona knowledge base with relationship-aware retrieval.
+3. Add a pronoun/register critic and repair pass.
+4. Add a polished GUI review editor for diagnostics.
+5. Build a golden review set for 30-50 representative lines.

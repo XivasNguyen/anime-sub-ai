@@ -21,6 +21,8 @@ Implemented:
 - Optional cached series knowledge base plus auto-extracted glossary
 - ASS tag masking before translation and deterministic restoration after translation
 - Basic local-model JSON repair for common malformed responses
+- Dual-source translation scaffolding with local `faster-whisper` Japanese ASR and timestamp alignment
+- Production presets for quality/repair behavior and ASR model/device selection
 - Local web GUI with FastAPI/Jinja2
 - Per-line quality diagnostics in JSON reports
 - Manual glossary file support
@@ -30,8 +32,9 @@ Implemented:
 Not production-complete yet:
 
 - Polished GUI review editor UX
-- Robust JSON repair for every malformed local-model output
-- Full end-to-end quality review on a completed real episode
+- Production-grade natural Vietnamese output
+- Reliable CUDA ASR setup and audio-assisted translation by default
+- Strong series knowledge base with character relationships and pronoun policy
 - Batch season processing
 - OCR, vision AI, Plex/Jellyfin integration, local LLM management UI
 
@@ -124,6 +127,11 @@ Useful local options:
 - `--resume/--no-resume`: reuse or bypass completed cached chunks.
 - `--force-retranslate`: ignore cached translations for this run.
 - `--repair-warnings`: run a second translation pass only for lines flagged by quality warnings.
+- `--repair-mode none|warnings|production`: choose targeted repair behavior.
+- `--quality-preset fast|balanced|production`: choose batch defaults and future quality gates.
+- `--dual-source/--no-dual-source`: include or bypass Japanese audio ASR context.
+- `--asr-model turbo|small|medium|large-v3`: choose the local faster-whisper model.
+- `--asr-device cuda|cpu`: choose the ASR runtime device.
 - `--glossary-path PATH`: use a manual glossary JSON file.
 - `--series-title NAME`: override filename-based title inference for knowledge/glossary.
 - `--knowledge`: enable cached series knowledge enrichment.
@@ -141,6 +149,22 @@ python -m app benchmark "episode.mkv" \
 ```
 
 Each translate run writes a JSON report next to the generated `.vi.ass` with timings, cache stats, warnings, per-line diagnostics, knowledge metadata, and output paths.
+
+Recent local test:
+
+```text
+Input: [SubsPlease] NEEDY GIRL OVERDOSE - 07 (720p) [129E318F].mkv
+Provider/model: LM Studio / gemma-3-4b-it
+Mode: no dual-source ASR, production repair, batch 8, concurrency 1
+Lines: 361
+Elapsed: 263.7s
+Speed: 1.37 lines/s
+Critical errors: 0
+Warnings: 57
+Remaining quality issues: mostly English fragments, pronoun/register shifts, and high CPS lines
+```
+
+This is fast enough for the current five-minute target, but it is not yet production-quality Vietnamese. The translation still sounds stiff in many places, so the next major work is audio-backed context plus a stronger series knowledge/RAG layer.
 
 Current benchmark notes are in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
@@ -164,6 +188,7 @@ MKV input
 -> select English ASS/SRT subtitle track
 -> extract subtitle to temp/*.en.ass
 -> parse ASS events with pysubs2
+-> optionally extract Japanese audio and align ASR text to subtitle timings
 -> split subtitle events into contextual chunks
 -> translate each chunk with selected provider
 -> validate JSON response and line indexes
@@ -197,6 +222,24 @@ Glossary precedence:
 ```text
 manual glossary > cached series bible > auto-detected terms
 ```
+
+## Knowledge And Audio Roadmap
+
+The current knowledge base is intentionally conservative and can miss the real cast/persona context, which causes unstable Vietnamese pronouns. Production translation needs a richer per-series bible:
+
+- Resolve the anime title to stable external IDs across MAL, AniList, AniDB, and optionally other mapping services.
+- Fetch character lists, aliases, roles, Japanese names, voice actors, short bios, and relationship hints.
+- Store those facts locally as structured JSON plus a small retrieval index.
+- Retrieve only episode-relevant facts into each translation chunk instead of stuffing the whole series page into every prompt.
+- Keep relationship facts spoiler-aware: no future-episode relationship facts in `no_spoiler` mode.
+
+Useful references:
+
+- Jikan exposes MAL-derived anime character/staff models, useful for a no-auth first pass: https://docs.jikan.moe/objects/model/anime/characters-and-staff/
+- AniList GraphQL character connections include edge metadata such as character role and voice actors: https://anilist.gitbook.io/anilist-apiv2-docs/docs/guide/graphql/connections
+- AniDB documents strict character relationship semantics and warns against casual scraping/over-requesting: https://wiki.anidb.net/Content%3ACharacters and https://wiki.anidb.net/API
+
+Open work is tracked in [docs/PENDING_TASKS.md](docs/PENDING_TASKS.md).
 
 ## Windows Build And Release
 
@@ -233,3 +276,9 @@ The bottleneck is local model behavior:
 - For LM Studio, concurrency above `1` did not improve throughput in the current tests.
 
 The project is moving toward a production-ready approach: benchmark first, choose model/batch settings based on evidence, add resumable cache, and make local-provider output repair more robust before full-season automation.
+
+Current quality conclusion:
+
+- `gemma-3-4b-it` can meet the speed target, but output quality only improves slightly over the previous baseline.
+- Without audio context and richer character knowledge, the model still produces stiff Vietnamese, inconsistent pronouns, and occasional English leakage.
+- CUDA ASR currently needs environment repair on Windows when `cublas64_12.dll` is missing.

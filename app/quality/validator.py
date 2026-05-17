@@ -67,6 +67,7 @@ def preserve_missing_ass_tags(lines, translations: dict[int, str]) -> dict[int, 
         if translated is None:
             continue
         translated = normalize_subtitle_line_breaks(line.raw_text, translated)
+        translated = sanitize_unbalanced_ass_braces(line.raw_text, translated)
         original_tags = ASS_TAG_RE.findall(line.raw_text)
         if original_tags:
             translated_tags = ASS_TAG_RE.findall(translated)
@@ -75,6 +76,17 @@ def preserve_missing_ass_tags(lines, translations: dict[int, str]) -> dict[int, 
                 translated = "".join(missing_tags) + translated
         fixed[line.index] = translated
     return fixed
+
+
+def sanitize_unbalanced_ass_braces(source_text: str, translated_text: str) -> str:
+    if translated_text.count("{") == translated_text.count("}"):
+        return translated_text
+    original_tags = ASS_TAG_RE.findall(source_text)
+    without_braces = translated_text.replace("{", "").replace("}", "")
+    if not original_tags:
+        return without_braces
+    text_without_tags = ASS_TAG_RE.sub("", without_braces)
+    return "".join(original_tags) + text_without_tags
 
 
 def normalize_subtitle_line_breaks(source_text: str, translated_text: str) -> str:

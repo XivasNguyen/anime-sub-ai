@@ -176,12 +176,7 @@ def build_glossary(lines: list[SubtitleLine], bible: SeriesBible | None = None) 
             continue
         if source_key not in HONORIFICS and " " not in source and "-" not in source and count < 2:
             continue
-        protected = (
-            source_key in HONORIFICS
-            or source in suffix_terms
-            or source in name_field_terms
-            or (count >= 3 and source_key not in STOPWORDS and _looks_like_name(source))
-        )
+        protected = source_key in HONORIFICS or source in suffix_terms or source in name_field_terms
         terms.setdefault(
             source_key,
             GlossaryTerm(
@@ -193,11 +188,6 @@ def build_glossary(lines: list[SubtitleLine], bible: SeriesBible | None = None) 
         )
 
     return Glossary(terms=sorted(terms.values(), key=lambda item: item.source.lower()))
-
-
-def _looks_like_name(value: str) -> bool:
-    return bool(value and value[0].isupper() and value.lower() not in STOPWORDS and len(value) > 2)
-
 
 def load_manual_glossary(path: Path) -> Glossary:
     if not path.exists():

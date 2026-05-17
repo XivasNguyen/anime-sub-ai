@@ -14,7 +14,13 @@ from app.glossary.glossary import build_glossary, load_manual_glossary, merge_gl
 from app.knowledge.series_bible import infer_series_title, load_or_create_series_bible
 from app.parser.ass_parser import parse_ass
 from app.quality.report import build_quality_report
-from app.quality.validator import normalize_subtitle_line_breaks, preserve_missing_ass_tags, validate_ass_file, validate_translations
+from app.quality.validator import (
+    normalize_subtitle_line_breaks,
+    preserve_missing_ass_tags,
+    sanitize_unbalanced_ass_braces,
+    validate_ass_file,
+    validate_translations,
+)
 from app.review.export import export_review_set
 from app.translator.ass_mask import mask_ass_text, restore_ass_text
 from app.translator.base import AudioLineContext, PromptContext, PromptTerm, TranslationChunk, TranslationResult, TranslatorProvider
@@ -105,6 +111,13 @@ class MvpTests(unittest.TestCase):
             {1},
         )
         self.assertEqual(parsed[0].translated_text, "Xin chào")
+
+    def test_parse_translation_response_repairs_invalid_placeholder_escape(self) -> None:
+        parsed = parse_translation_response(
+            '{"translations":[{"index":57,"translated_text":"[[ASS_TAG_00]]Text\\[[ASS_TAG_02]\\]"}]}',
+            {57},
+        )
+        self.assertEqual(parsed[0].translated_text, "[[ASS_TAG_00]]Text[[ASS_TAG_02]]")
 
     def test_ass_tag_mask_and_restore(self) -> None:
         original = "{\\an8}Hello {\\i1}there\\Nfriend"
@@ -279,6 +292,12 @@ class MvpTests(unittest.TestCase):
         self.assertEqual(
             normalize_subtitle_line_breaks(source, translated),
             "Cậu phải mặc đồng phục\\Nkhi đến trường.",
+        )
+
+    def test_sanitize_unbalanced_ass_braces(self) -> None:
+        self.assertEqual(
+            sanitize_unbalanced_ass_braces("I love your face!", "Tôi thích khuôn mặt của bạn {"),
+            "Tôi thích khuôn mặt của bạn ",
         )
 
     def test_align_asr_segments_by_subtitle_overlap(self) -> None:
