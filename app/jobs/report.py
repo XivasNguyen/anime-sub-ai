@@ -27,6 +27,8 @@ class TranslationReport:
     retry_splits: int = 0
     chunk_timings: list[float] = field(default_factory=list)
     diagnostics: list[dict[str, Any]] = field(default_factory=list)
+    dual_source: dict[str, Any] = field(default_factory=dict)
+    quality_gate: dict[str, Any] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     knowledge: dict[str, Any] = field(default_factory=dict)

@@ -556,10 +556,39 @@
                 </div>
               </div>
 
+              <div class="grid three" style="margin-top: 13px;">
+                <div class="field">
+                  <label for="quality_preset">Quality Preset</label>
+                  <select id="quality_preset">
+                    <option value="production" {% if settings.translation.quality_preset == "production" %}selected{% endif %}>production</option>
+                    <option value="balanced" {% if settings.translation.quality_preset == "balanced" %}selected{% endif %}>balanced</option>
+                    <option value="fast" {% if settings.translation.quality_preset == "fast" %}selected{% endif %}>fast</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="repair_mode">Repair Mode</label>
+                  <select id="repair_mode">
+                    <option value="production" {% if settings.translation.repair_mode == "production" %}selected{% endif %}>production</option>
+                    <option value="warnings" {% if settings.translation.repair_mode == "warnings" %}selected{% endif %}>warnings</option>
+                    <option value="none" {% if settings.translation.repair_mode == "none" %}selected{% endif %}>none</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="asr_model">ASR Model</label>
+                  <select id="asr_model">
+                    <option value="turbo" {% if settings.asr.model == "turbo" %}selected{% endif %}>turbo</option>
+                    <option value="small" {% if settings.asr.model == "small" %}selected{% endif %}>small</option>
+                    <option value="medium" {% if settings.asr.model == "medium" %}selected{% endif %}>medium</option>
+                    <option value="large-v3" {% if settings.asr.model == "large-v3" %}selected{% endif %}>large-v3</option>
+                  </select>
+                </div>
+              </div>
+
               <div class="switches">
                 <label class="check"><input id="skip_mux" type="checkbox">Skip mux</label>
                 <label class="check"><input id="repair_warnings" type="checkbox">Repair warnings</label>
                 <label class="check"><input id="force_retranslate" type="checkbox">Force retranslate</label>
+                <label class="check"><input id="dual_source" type="checkbox" {% if settings.asr.dual_source %}checked{% endif %}>Dual-source ASR</label>
               </div>
 
               <div class="actions">
@@ -709,7 +738,12 @@
         limit_lines: limit ? Number(limit) : null,
         skip_mux: document.getElementById('skip_mux').checked,
         repair_warnings: document.getElementById('repair_warnings').checked,
-        force_retranslate: document.getElementById('force_retranslate').checked
+        force_retranslate: document.getElementById('force_retranslate').checked,
+        quality_preset: document.getElementById('quality_preset').value,
+        repair_mode: document.getElementById('repair_mode').value,
+        dual_source: document.getElementById('dual_source').checked,
+        asr_model: document.getElementById('asr_model').value,
+        asr_device: 'cuda'
       };
       document.getElementById('runtimeProvider').textContent = body.provider;
       document.getElementById('runtimeModel').textContent = body.model || 'default';

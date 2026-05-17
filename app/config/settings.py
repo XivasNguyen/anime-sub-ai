@@ -49,6 +49,16 @@ class TranslationSettings:
     overlap_lines: int = 2
     max_concurrency: int = 3
     retry_count: int = 3
+    quality_preset: str = "production"
+    repair_mode: str = "production"
+
+
+@dataclass
+class ASRSettings:
+    dual_source: bool = True
+    model: str = "turbo"
+    device: str = "cuda"
+    compute_type: str = ""
 
 
 @dataclass
@@ -90,6 +100,7 @@ class Settings:
     ollama: OllamaSettings = field(default_factory=OllamaSettings)
     lmstudio: LMStudioSettings = field(default_factory=LMStudioSettings)
     translation: TranslationSettings = field(default_factory=TranslationSettings)
+    asr: ASRSettings = field(default_factory=ASRSettings)
     mux: MuxSettings = field(default_factory=MuxSettings)
     output: OutputSettings = field(default_factory=OutputSettings)
     cache: CacheSettings = field(default_factory=CacheSettings)
@@ -111,6 +122,7 @@ def load_settings(path: Path | None = None) -> Settings:
     ollama_data = data.get("ollama", {})
     lmstudio_data = data.get("lmstudio", {})
     translation_data = data.get("translation", {})
+    asr_data = data.get("asr", {})
     mux_data = data.get("mux", {})
     output_data = data.get("output", {})
     cache_data = data.get("cache", {})
@@ -140,6 +152,14 @@ def load_settings(path: Path | None = None) -> Settings:
             overlap_lines=int(translation_data.get("overlap_lines", 2)),
             max_concurrency=int(translation_data.get("max_concurrency", 3)),
             retry_count=int(translation_data.get("retry_count", 3)),
+            quality_preset=str(translation_data.get("quality_preset", "production")),
+            repair_mode=str(translation_data.get("repair_mode", "production")),
+        ),
+        asr=ASRSettings(
+            dual_source=bool(asr_data.get("dual_source", True)),
+            model=str(asr_data.get("model", "turbo")),
+            device=str(asr_data.get("device", "cuda")),
+            compute_type=str(asr_data.get("compute_type", "")),
         ),
         mux=MuxSettings(
             set_default_subtitle=bool(mux_data.get("set_default_subtitle", True)),

@@ -39,6 +39,11 @@ class JobRequest(BaseModel):
     limit_lines: int | None = None
     skip_mux: bool = False
     repair_warnings: bool = False
+    repair_mode: str | None = None
+    quality_preset: str | None = None
+    dual_source: bool | None = None
+    asr_model: str | None = None
+    asr_device: str | None = None
     series_title: str | None = None
     knowledge: bool | None = None
     force_retranslate: bool = False
@@ -85,6 +90,11 @@ def create_app() -> FastAPI:
                 "ffmpeg": command_available("ffmpeg"),
                 "mkvmerge": command_available("mkvmerge"),
                 "mkvextract": command_available("mkvextract"),
+            },
+            "asr": {
+                "dual_source": settings.asr.dual_source,
+                "model": settings.asr.model,
+                "device": settings.asr.device,
             },
         }
 
@@ -246,6 +256,11 @@ def _options_from_request(request: JobRequest, *, skip_mux: bool) -> Translation
         limit_lines=request.limit_lines,
         skip_mux=skip_mux,
         repair_warnings=request.repair_warnings,
+        repair_mode=request.repair_mode,
+        quality_preset=request.quality_preset,
+        dual_source=request.dual_source,
+        asr_model=request.asr_model,
+        asr_device=request.asr_device,
         series_title=request.series_title,
         knowledge_enabled=request.knowledge,
         force_retranslate=request.force_retranslate,

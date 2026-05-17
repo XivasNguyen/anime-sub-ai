@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import pysubs2
 
@@ -41,12 +42,18 @@ def validate_translations(
     parsed: ParsedSubtitle,
     translations: dict[int, str],
     glossary: Glossary | None = None,
+    audio_context: dict[int, Any] | None = None,
 ) -> ValidationReport:
-    return validate_translation_lines(parsed.lines, translations, glossary=glossary)
+    return validate_translation_lines(parsed.lines, translations, glossary=glossary, audio_context=audio_context)
 
 
-def validate_translation_lines(lines, translations: dict[int, str], glossary: Glossary | None = None) -> ValidationReport:
-    quality = build_quality_report(lines, translations, glossary)
+def validate_translation_lines(
+    lines,
+    translations: dict[int, str],
+    glossary: Glossary | None = None,
+    audio_context: dict[int, Any] | None = None,
+) -> ValidationReport:
+    quality = build_quality_report(lines, translations, glossary, audio_context=audio_context)
     report = ValidationReport()
     report.errors.extend(_format_diagnostic(item) for item in quality.errors)
     report.warnings.extend(_format_diagnostic(item) for item in quality.warnings)
@@ -59,14 +66,38 @@ def preserve_missing_ass_tags(lines, translations: dict[int, str]) -> dict[int, 
         translated = fixed.get(line.index)
         if translated is None:
             continue
+        translated = normalize_subtitle_line_breaks(line.raw_text, translated)
         original_tags = ASS_TAG_RE.findall(line.raw_text)
-        if not original_tags:
-            continue
-        translated_tags = ASS_TAG_RE.findall(translated)
-        missing_tags = [tag for tag in original_tags if tag not in translated_tags]
-        if missing_tags:
-            fixed[line.index] = "".join(missing_tags) + translated
+        if original_tags:
+            translated_tags = ASS_TAG_RE.findall(translated)
+            missing_tags = [tag for tag in original_tags if tag not in translated_tags]
+            if missing_tags:
+                translated = "".join(missing_tags) + translated
+        fixed[line.index] = translated
     return fixed
+
+
+def normalize_subtitle_line_breaks(source_text: str, translated_text: str) -> str:
+    normalized = translated_text.replace("\r\n", "\n").replace("\r", "\n")
+    normalized = normalized.replace("\\n", "\\N")
+    if "\n" in normalized:
+        normalized = normalized.replace("\n", "\\N")
+    if "\\N" not in source_text or "\\N" in normalized:
+        return normalized
+
+    visible = ASS_TAG_RE.sub("", normalized)
+    if len(visible) < 28:
+        return normalized
+    return _insert_balanced_line_break(normalized)
+
+
+def _insert_balanced_line_break(text: str) -> str:
+    break_candidates = [index for index, char in enumerate(text) if char == " "]
+    if not break_candidates:
+        return text
+    midpoint = len(text) / 2
+    best = min(break_candidates, key=lambda index: abs(index - midpoint))
+    return f"{text[:best]}\\N{text[best + 1:]}"
 
 
 def _format_diagnostic(diagnostic) -> str:

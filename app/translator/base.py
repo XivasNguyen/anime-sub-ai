@@ -24,10 +24,20 @@ class PromptContext:
 
 
 @dataclass(frozen=True)
+class AudioLineContext:
+    index: int
+    japanese_text: str = ""
+    confidence: float = 0.0
+    overlap_ms: int = 0
+    source: str = "none"
+
+
+@dataclass(frozen=True)
 class TranslationChunk:
     lines: list[SubtitleLine]
     context_before: list[SubtitleLine]
     prompt_context: PromptContext = field(default_factory=PromptContext)
+    audio_context: dict[int, AudioLineContext] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

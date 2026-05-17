@@ -12,6 +12,7 @@ class SubtitleLine:
     start: int
     end: int
     style: str
+    name: str
     text: str
     raw_text: str
 
@@ -31,10 +32,10 @@ def parse_ass(path: Path) -> ParsedSubtitle:
             start=event.start,
             end=event.end,
             style=event.style,
+            name=event.name,
             text=event.plaintext,
             raw_text=event.text,
         )
         for index, event in enumerate(subs.events, start=1)
     ]
     return ParsedSubtitle(path=path, subs=subs, lines=lines)
-

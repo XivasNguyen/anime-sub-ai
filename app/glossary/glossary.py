@@ -32,6 +32,7 @@ STOPWORDS = {
     "at",
     "but",
     "by",
+    "come",
     "could",
     "do",
     "does",
@@ -40,9 +41,11 @@ STOPWORDS = {
     "for",
     "from",
     "give",
+    "good",
     "great",
     "have",
     "he",
+    "here",
     "hey",
     "i",
     "if",
@@ -73,10 +76,13 @@ STOPWORDS = {
     "we",
     "well",
     "what",
+    "wha",
     "which",
+    "why",
     "work",
     "yeah",
     "you",
+    "you're",
     "your",
 }
 CAPITALIZED_RE = re.compile(r"\b[A-Z][A-Za-z][A-Za-z'-]*(?:\s+[A-Z][A-Za-z][A-Za-z'-]*){0,3}\b")
@@ -133,14 +139,19 @@ def build_glossary(lines: list[SubtitleLine], bible: SeriesBible | None = None) 
     if bible is not None:
         for name in bible.character_names:
             if name:
-                terms[name.lower()] = GlossaryTerm(source=name, target=name, note="Character name")
+                terms[name.lower()] = GlossaryTerm(source=name, target=name, note="Character name", protected=True)
         for term in bible.world_terms:
             if term:
-                terms[term.lower()] = GlossaryTerm(source=term, target=term, note="Series term")
+                terms[term.lower()] = GlossaryTerm(source=term, target=term, note="Series term", protected=True)
 
     counts: dict[str, int] = {}
+    suffix_terms: set[str] = set()
+    name_field_terms: set[str] = set()
     for line in lines:
         scan_text = line.text.replace("\\N", " ")
+        if line.name and line.name.strip() and line.name.strip().lower() not in STOPWORDS:
+            name_field_terms.add(line.name.strip())
+            counts[line.name.strip()] = counts.get(line.name.strip(), 0) + 2
         for honorific in HONORIFICS:
             if honorific in line.raw_text.lower():
                 counts[honorific] = counts.get(honorific, 0) + 1
@@ -156,6 +167,8 @@ def build_glossary(lines: list[SubtitleLine], bible: SeriesBible | None = None) 
                 base, suffix = match.rsplit("-", 1)
                 if suffix.lower().strip("'s") in HONORIFICS and base.lower() not in STOPWORDS:
                     counts[base] = counts.get(base, 0) + 1
+                    suffix_terms.add(base)
+                    suffix_terms.add(match)
 
     for source, count in counts.items():
         source_key = source.lower()
@@ -163,9 +176,27 @@ def build_glossary(lines: list[SubtitleLine], bible: SeriesBible | None = None) 
             continue
         if source_key not in HONORIFICS and " " not in source and "-" not in source and count < 2:
             continue
-        terms.setdefault(source_key, GlossaryTerm(source=source, target=source, note=f"Auto-detected {count}x"))
+        protected = (
+            source_key in HONORIFICS
+            or source in suffix_terms
+            or source in name_field_terms
+            or (count >= 3 and source_key not in STOPWORDS and _looks_like_name(source))
+        )
+        terms.setdefault(
+            source_key,
+            GlossaryTerm(
+                source=source,
+                target=source,
+                note=f"Auto-detected {count}x",
+                protected=protected,
+            ),
+        )
 
     return Glossary(terms=sorted(terms.values(), key=lambda item: item.source.lower()))
+
+
+def _looks_like_name(value: str) -> bool:
+    return bool(value and value[0].isupper() and value.lower() not in STOPWORDS and len(value) > 2)
 
 
 def load_manual_glossary(path: Path) -> Glossary:

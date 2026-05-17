@@ -9,7 +9,7 @@ from typing import Any
 from app.parser.ass_parser import SubtitleLine
 from app.cache.sqlite_cache import TranslationCache, chunk_cache_key
 from app.translator.ass_mask import restore_ass_text
-from app.translator.base import PromptContext, TranslationChunk, TranslationResult, TranslatorProvider
+from app.translator.base import AudioLineContext, PromptContext, TranslationChunk, TranslationResult, TranslatorProvider
 from app.translator.chunker import chunk_subtitles
 from app.translator.prompt_builder import PROMPT_VERSION
 
@@ -30,6 +30,7 @@ async def translate_lines(
     max_concurrency: int,
     prompt_context: PromptContext | None = None,
     prompt_context_builder: Callable[[list[SubtitleLine]], PromptContext] | None = None,
+    audio_context: dict[int, AudioLineContext] | None = None,
     cache: TranslationCache | None = None,
     provider_name: str = "",
     model: str = "",
@@ -42,6 +43,7 @@ async def translate_lines(
         chunk_size=chunk_size,
         overlap_lines=overlap_lines,
         prompt_context=prompt_context,
+        audio_context=audio_context,
     )
     if prompt_context_builder is not None:
         chunks = [
@@ -49,6 +51,7 @@ async def translate_lines(
                 lines=chunk.lines,
                 context_before=chunk.context_before,
                 prompt_context=prompt_context_builder([*chunk.context_before, *chunk.lines]),
+                audio_context=chunk.audio_context,
             )
             for chunk in chunks
         ]
@@ -162,11 +165,13 @@ async def _translate_chunk_resilient(
         lines=chunk.lines[:midpoint],
         context_before=chunk.context_before,
         prompt_context=chunk.prompt_context,
+        audio_context=chunk.audio_context,
     )
     right = TranslationChunk(
         lines=chunk.lines[midpoint:],
         context_before=[*chunk.context_before, *chunk.lines[:midpoint]],
         prompt_context=chunk.prompt_context,
+        audio_context=chunk.audio_context,
     )
     print(f"Retrying failed chunk as {len(left.lines)} + {len(right.lines)} lines")
     if stats is not None:

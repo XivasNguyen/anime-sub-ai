@@ -31,8 +31,11 @@ class LMStudioTranslator(TranslatorProvider):
 
     async def _translate_once(self, chunk: TranslationChunk) -> list[TranslationResult]:
         system_prompt = (
-            "Translate anime subtitle text from English to natural Vietnamese. "
+            "Translate anime subtitle text to natural Vietnamese. "
+            "Use English as the primary source and Japanese ASR as secondary context when present. "
+            "Keep subtitles concise, idiomatic, and easy to read. Avoid literal English wording. "
             "ASS tags are masked as placeholders like [[ASS_TAG_00]]; preserve placeholders exactly. "
+            "Preserve subtitle line breaks as \\N and never output raw newline characters. "
             "Use the knowledge and glossary terms when relevant. "
             "Preserve names and honorifics when appropriate. "
             "Return only valid JSON with key translations. "
@@ -43,7 +46,7 @@ class LMStudioTranslator(TranslatorProvider):
             model=self.model,
             response_format={"type": "text"},
             temperature=0.2,
-            max_tokens=8192,
+            max_tokens=4096,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},

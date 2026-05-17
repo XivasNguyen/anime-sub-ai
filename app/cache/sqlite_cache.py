@@ -98,6 +98,11 @@ def chunk_cache_key(
             "spoiler_mode": chunk.prompt_context.spoiler_mode,
             "terms": [term.__dict__ for term in chunk.prompt_context.terms],
         },
+        "audio_context": {
+            str(index): context.__dict__
+            for index, context in sorted(chunk.audio_context.items())
+            if index in {line.index for line in [*chunk.context_before, *chunk.lines]}
+        },
     }
     encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
@@ -109,5 +114,6 @@ def _line_payload(line: SubtitleLine) -> dict[str, Any]:
         "start": line.start,
         "end": line.end,
         "style": line.style,
+        "name": line.name,
         "raw_text": line.raw_text,
     }

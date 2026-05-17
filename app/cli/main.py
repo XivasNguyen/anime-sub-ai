@@ -101,6 +101,11 @@ def translate(
     cache_path: Path | None = typer.Option(None, "--cache-path"),
     glossary_path: Path | None = typer.Option(None, "--glossary-path"),
     repair_warnings: bool = typer.Option(False, "--repair-warnings"),
+    repair_mode: str | None = typer.Option(None, "--repair-mode"),
+    quality_preset: str | None = typer.Option(None, "--quality-preset"),
+    dual_source: bool | None = typer.Option(None, "--dual-source/--no-dual-source"),
+    asr_model: str | None = typer.Option(None, "--asr-model"),
+    asr_device: str | None = typer.Option(None, "--asr-device"),
     series_title: str | None = typer.Option(None, "--series-title"),
     knowledge: bool | None = typer.Option(None, "--knowledge/--no-knowledge"),
     knowledge_web: bool | None = typer.Option(None, "--knowledge-web/--no-knowledge-web"),
@@ -137,6 +142,11 @@ def translate(
             cache_path=cache_path,
             glossary_path=glossary_path,
             repair_warnings=repair_warnings,
+            repair_mode=repair_mode,
+            quality_preset=quality_preset,
+            dual_source=dual_source,
+            asr_model=asr_model,
+            asr_device=asr_device,
         ),
     )
     for warning in result.report.warnings:

@@ -9,6 +9,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from app.audio.dual_source import DualSourceReport, build_dual_source_context
 from app.cache.sqlite_cache import TranslationCache
 from app.config.settings import Settings
 from app.extractor.subtitle_extractor import extract_subtitle
@@ -52,6 +53,11 @@ class TranslationJobOptions:
     cache_path: Path | None = None
     repair_warnings: bool = False
     glossary_path: Path | None = None
+    dual_source: bool | None = None
+    asr_model: str | None = None
+    asr_device: str | None = None
+    quality_preset: str | None = None
+    repair_mode: str | None = None
 
 
 @dataclass
@@ -85,6 +91,8 @@ def start_job(settings: Settings, options: TranslationJobOptions, job_id: str | 
     errors: list[str] = []
     cache: TranslationCache | None = None
     stats = PipelineStats()
+    dual_source_report = DualSourceReport()
+    repair_count = 0
     source_subtitle = ""
     output_subtitle: Path | None = None
     output_mkv: Path | None = None
@@ -115,6 +123,7 @@ def start_job(settings: Settings, options: TranslationJobOptions, job_id: str | 
                 provider_name,
                 model,
                 options,
+                settings,
                 source_subtitle=source_subtitle,
                 warnings=warnings,
                 errors=errors,
@@ -146,20 +155,35 @@ def start_job(settings: Settings, options: TranslationJobOptions, job_id: str | 
         manual_glossary = load_manual_glossary(options.glossary_path or settings.glossary.path)
         glossary = merge_glossaries(manual_glossary, auto_glossary)
 
+        _write_job_state(settings, job_id, "running", {"phase": "audio_asr"})
+        audio_context, dual_source_report = build_dual_source_context(
+            options.video,
+            selected_lines,
+            temp_dir,
+            enabled=settings.asr.dual_source if options.dual_source is None else options.dual_source,
+            model=options.asr_model or settings.asr.model,
+            device=options.asr_device or settings.asr.device,
+            compute_type=settings.asr.compute_type or None,
+        )
+        warnings.extend(dual_source_report.warnings)
+
         cache_path = options.cache_path or settings.cache.path
         if settings.cache.enabled:
             cache = TranslationCache(cache_path)
 
         _write_job_state(settings, job_id, "running", {"phase": "translate", "selected_lines": len(selected_lines)})
         translator = create_translator(settings, provider_name=provider_name, model=model)
+        chunk_size = _effective_chunk_size(settings, options)
+        max_concurrency = options.max_concurrency or settings.translation.max_concurrency
         translations = asyncio.run(
             translate_lines(
                 selected_lines,
                 translator,
-                chunk_size=options.batch_size or settings.translation.chunk_size,
+                chunk_size=chunk_size,
                 overlap_lines=settings.translation.overlap_lines,
-                max_concurrency=options.max_concurrency or settings.translation.max_concurrency,
+                max_concurrency=max_concurrency,
                 prompt_context_builder=lambda lines: _build_prompt_context(bible, glossary, lines),
+                audio_context=audio_context,
                 cache=cache,
                 provider_name=provider_name,
                 model=model,
@@ -173,7 +197,7 @@ def start_job(settings: Settings, options: TranslationJobOptions, job_id: str | 
                         "phase": "translate",
                         "selected_lines": len(selected_lines),
                         "translated_lines": payload.get("completed_chunks", 0)
-                        * (options.batch_size or settings.translation.chunk_size),
+                        * chunk_size,
                         "can_cancel": True,
                         **payload,
                     },
@@ -183,10 +207,14 @@ def start_job(settings: Settings, options: TranslationJobOptions, job_id: str | 
         translations = preserve_missing_ass_tags(selected_lines, translations)
 
         _write_job_state(settings, job_id, "running", {"phase": "validate"})
-        quality = build_quality_report(selected_lines, translations, glossary=glossary)
-        if options.repair_warnings and quality.warning_line_indexes():
-            _write_job_state(settings, job_id, "running", {"phase": "repair", "warning_lines": sorted(quality.warning_line_indexes())})
-            repair_lines = [line for line in selected_lines if line.index in quality.warning_line_indexes()]
+        quality = build_quality_report(selected_lines, translations, glossary=glossary, audio_context=audio_context)
+        repair_mode = options.repair_mode or settings.translation.repair_mode
+        if options.repair_warnings:
+            repair_mode = "warnings"
+        repair_indexes = _repair_line_indexes(quality, repair_mode)
+        if repair_indexes:
+            _write_job_state(settings, job_id, "running", {"phase": "repair", "warning_lines": sorted(repair_indexes)})
+            repair_lines = [line for line in selected_lines if line.index in repair_indexes]
             repaired = asyncio.run(
                 translate_lines(
                     repair_lines,
@@ -195,6 +223,7 @@ def start_job(settings: Settings, options: TranslationJobOptions, job_id: str | 
                     overlap_lines=0,
                     max_concurrency=1,
                     prompt_context_builder=lambda lines: _build_prompt_context(bible, glossary, lines),
+                    audio_context=audio_context,
                     cache=cache,
                     provider_name=provider_name,
                     model=model,
@@ -203,9 +232,10 @@ def start_job(settings: Settings, options: TranslationJobOptions, job_id: str | 
                 )
             )
             translations.update(preserve_missing_ass_tags(repair_lines, repaired))
-            quality = build_quality_report(selected_lines, translations, glossary=glossary)
+            repair_count = len(repair_lines)
+            quality = build_quality_report(selected_lines, translations, glossary=glossary, audio_context=audio_context)
 
-        validation = validate_translation_lines(selected_lines, translations, glossary=glossary)
+        validation = validate_translation_lines(selected_lines, translations, glossary=glossary, audio_context=audio_context)
         warnings.extend(validation.warnings)
         validation.raise_for_errors()
 
@@ -218,7 +248,7 @@ def start_job(settings: Settings, options: TranslationJobOptions, job_id: str | 
         validate_ass_file(output_subtitle).raise_for_errors()
 
         if not options.skip_mux:
-            validate_translations(parsed, translations, glossary=glossary).raise_for_errors()
+            validate_translations(parsed, translations, glossary=glossary, audio_context=audio_context).raise_for_errors()
             output_mkv = output_dir / f"{options.video.stem}.vi.mkv"
             _write_job_state(settings, job_id, "running", {"phase": "mux"})
             mux_softsub(
@@ -236,6 +266,7 @@ def start_job(settings: Settings, options: TranslationJobOptions, job_id: str | 
             provider_name,
             model,
             options,
+            settings,
             source_subtitle=source_subtitle,
             output_subtitle=str(output_subtitle or ""),
             output_mkv=str(output_mkv or ""),
@@ -249,6 +280,8 @@ def start_job(settings: Settings, options: TranslationJobOptions, job_id: str | 
             glossary=glossary,
             bible=bible,
             diagnostics=quality.to_json(),
+            dual_source=dual_source_report.to_json(),
+            quality_gate=_quality_gate(quality, repair_count),
         )
         report_path = (output_subtitle or output_dir / f"{options.video.stem}.vi.ass").with_suffix(".report.json")
         report.write(report_path)
@@ -262,6 +295,7 @@ def start_job(settings: Settings, options: TranslationJobOptions, job_id: str | 
             provider_name,
             model,
             options,
+            settings,
             source_subtitle=source_subtitle,
             output_subtitle=str(output_subtitle or ""),
             output_mkv=str(output_mkv or ""),
@@ -275,6 +309,8 @@ def start_job(settings: Settings, options: TranslationJobOptions, job_id: str | 
             glossary=None,
             bible=None,
             diagnostics=[],
+            dual_source=dual_source_report.to_json(),
+            quality_gate={"repair_count": repair_count},
         )
         report_path = settings.output.directory / f"{options.video.stem}.{job_id}.failed.report.json"
         report.write(report_path)
@@ -331,6 +367,14 @@ def _validate_options(options: TranslationJobOptions) -> None:
         raise ValueError("Start line must be greater than 0.")
     if options.limit_lines is not None and options.limit_lines < 1:
         raise ValueError("Limit lines must be greater than 0.")
+    if options.repair_mode is not None and options.repair_mode not in {"none", "warnings", "production"}:
+        raise ValueError("Repair mode must be one of: none, warnings, production.")
+    if options.quality_preset is not None and options.quality_preset not in {"fast", "balanced", "production"}:
+        raise ValueError("Quality preset must be one of: fast, balanced, production.")
+    if options.asr_model is not None and options.asr_model not in {"turbo", "small", "medium", "large-v3"}:
+        raise ValueError("ASR model must be one of: turbo, small, medium, large-v3.")
+    if options.asr_device is not None and options.asr_device not in {"cuda", "cpu"}:
+        raise ValueError("ASR device must be cuda or cpu.")
 
 
 def _build_prompt_context(bible: SeriesBible, glossary: Glossary, selected_lines) -> PromptContext:
@@ -350,6 +394,7 @@ def _build_report(
     provider: str,
     model: str,
     options: TranslationJobOptions,
+    settings: Settings,
     *,
     source_subtitle: str = "",
     output_subtitle: str = "",
@@ -364,6 +409,8 @@ def _build_report(
     glossary: Glossary | None,
     bible: SeriesBible | None,
     diagnostics: list[dict[str, Any]] | None = None,
+    dual_source: dict[str, Any] | None = None,
+    quality_gate: dict[str, Any] | None = None,
 ) -> TranslationReport:
     cache_stats = cache.stats if cache is not None else None
     return TranslationReport(
@@ -386,6 +433,8 @@ def _build_report(
         retry_splits=stats.retry_splits,
         chunk_timings=stats.chunk_timings,
         diagnostics=diagnostics or [],
+        dual_source=dual_source or {},
+        quality_gate=quality_gate or {},
         warnings=warnings,
         errors=errors,
         knowledge={
@@ -398,14 +447,59 @@ def _build_report(
         settings={
             "batch_size": options.batch_size,
             "max_concurrency": options.max_concurrency,
+            "effective_batch_size": _effective_chunk_size(settings, options),
             "start_line": options.start_line,
             "limit_lines": options.limit_lines,
             "skip_mux": options.skip_mux,
             "resume": options.resume,
             "force_retranslate": options.force_retranslate,
             "repair_warnings": options.repair_warnings,
+            "repair_mode": options.repair_mode,
+            "quality_preset": options.quality_preset,
+            "dual_source": options.dual_source,
+            "asr_model": options.asr_model,
+            "asr_device": options.asr_device,
         },
     )
+
+
+def _repair_line_indexes(quality, repair_mode: str) -> set[int]:
+    mode = (repair_mode or "none").lower()
+    if mode == "none":
+        return set()
+    if mode == "warnings":
+        return quality.warning_line_indexes()
+    if mode != "production":
+        return set()
+    repairable_codes = {
+        "cjk_leakage",
+        "linebreak_normalized",
+        "missing_line_break",
+        "mostly_english",
+        "placeholder_leak",
+        "too_literal",
+        "untranslated_short_phrase",
+    }
+    return {
+        item.line_index
+        for item in quality.diagnostics
+        if item.line_index > 0 and item.code in repairable_codes
+    }
+
+
+def _quality_gate(quality, repair_count: int) -> dict[str, Any]:
+    diagnostics_by_code: dict[str, int] = {}
+    for item in quality.diagnostics:
+        diagnostics_by_code[item.code] = diagnostics_by_code.get(item.code, 0) + 1
+    naturalness_codes = {"mostly_english", "cjk_leakage", "too_literal", "untranslated_short_phrase"}
+    return {
+        "critical_errors": len(quality.errors),
+        "warning_count": len(quality.warnings),
+        "repair_count": repair_count,
+        "naturalness_flags": sum(diagnostics_by_code.get(code, 0) for code in naturalness_codes),
+        "diagnostics_by_code": diagnostics_by_code,
+        "ok": not quality.errors,
+    }
 
 
 def _default_model(settings: Settings, provider_name: str) -> str:
@@ -416,6 +510,17 @@ def _default_model(settings: Settings, provider_name: str) -> str:
     if provider_name == "lmstudio":
         return settings.lmstudio.model
     return ""
+
+
+def _effective_chunk_size(settings: Settings, options: TranslationJobOptions) -> int:
+    if options.batch_size is not None:
+        return options.batch_size
+    preset = options.quality_preset or settings.translation.quality_preset
+    if preset == "fast":
+        return 10
+    if preset == "balanced":
+        return 8
+    return settings.translation.chunk_size
 
 
 def _write_job_state(settings: Settings, job_id: str, status: str, payload: dict[str, Any]) -> None:

@@ -8,15 +8,16 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.cache.sqlite_cache import TranslationCache, chunk_cache_key
+from app.audio.dual_source import ASRSegment, align_asr_segments
 from app.formatter.ass_formatter import rebuild_ass
 from app.glossary.glossary import build_glossary, load_manual_glossary, merge_glossaries
 from app.knowledge.series_bible import infer_series_title, load_or_create_series_bible
 from app.parser.ass_parser import parse_ass
 from app.quality.report import build_quality_report
-from app.quality.validator import preserve_missing_ass_tags, validate_ass_file, validate_translations
+from app.quality.validator import normalize_subtitle_line_breaks, preserve_missing_ass_tags, validate_ass_file, validate_translations
 from app.review.export import export_review_set
 from app.translator.ass_mask import mask_ass_text, restore_ass_text
-from app.translator.base import PromptContext, PromptTerm, TranslationChunk, TranslationResult, TranslatorProvider
+from app.translator.base import AudioLineContext, PromptContext, PromptTerm, TranslationChunk, TranslationResult, TranslatorProvider
 from app.translator.chunker import chunk_subtitles
 from app.translator.factory import create_translator
 from app.translator.lmstudio_provider import LMStudioTranslator
@@ -26,6 +27,7 @@ from app.translator.openai_compat import normalize_openai_base_url
 from app.config.settings import OpenAISettings, Settings
 from app.translator.health import check_provider_health
 from app.translator.pipeline import translate_lines
+from app.translator.prompt_builder import build_compact_user_prompt
 from app.web.main import create_app
 
 
@@ -221,6 +223,22 @@ class MvpTests(unittest.TestCase):
             )
             self.assertTrue(any("protected glossary term" in warning.lower() for warning in report.warnings))
 
+    def test_auto_glossary_does_not_protect_sentence_starters(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "sample.ass"
+            source.write_text(
+                SAMPLE_ASS
+                + "Dialogue: 0,0:00:06.00,0:00:07.00,Default,,0,0,0,,Good morning.\n"
+                + "Dialogue: 0,0:00:08.00,0:00:09.00,Default,,0,0,0,,Why are you here?\n"
+                + "Dialogue: 0,0:00:10.00,0:00:11.00,Default,,0,0,0,,Here comes trouble.\n"
+                + "Dialogue: 0,0:00:12.00,0:00:13.00,Default,,0,0,0,,Come on.\n",
+                encoding="utf-8",
+            )
+            parsed = parse_ass(source)
+            glossary = build_glossary(parsed.lines)
+            protected = {term.source for term in glossary.terms if term.protected}
+            self.assertFalse({"Good", "Why", "Here", "Come"} & protected)
+
     def test_manual_glossary_overrides_auto_terms(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "glossary.json"
@@ -254,6 +272,46 @@ class MvpTests(unittest.TestCase):
 
             fixed = preserve_missing_ass_tags(parsed.lines[:1], {1: "Cậu tới muộn rồi."})
             self.assertEqual(fixed[1], "{\\an8}Cậu tới muộn rồi.")
+
+    def test_normalize_raw_newline_to_ass_line_break(self) -> None:
+        source = "You're supposed to \\Nattend school in uniform."
+        translated = "Cậu phải mặc đồng phục\nkhi đến trường."
+        self.assertEqual(
+            normalize_subtitle_line_breaks(source, translated),
+            "Cậu phải mặc đồng phục\\Nkhi đến trường.",
+        )
+
+    def test_align_asr_segments_by_subtitle_overlap(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "sample.ass"
+            source.write_text(SAMPLE_ASS, encoding="utf-8")
+            parsed = parse_ass(source)
+            context = align_asr_segments(
+                parsed.lines,
+                [
+                    ASRSegment(start_ms=900, end_ms=2500, text="ばかじゃないの", confidence=0.8),
+                    ASRSegment(start_ms=4100, end_ms=4800, text="知ってる", confidence=0.7),
+                ],
+            )
+            self.assertEqual(context[1].japanese_text, "ばかじゃないの")
+            self.assertEqual(context[2].japanese_text, "知ってる")
+            self.assertGreater(context[1].overlap_ms, 0)
+
+    def test_dual_source_prompt_includes_audio_context(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "sample.ass"
+            source.write_text(SAMPLE_ASS, encoding="utf-8")
+            parsed = parse_ass(source)
+            chunk = TranslationChunk(
+                lines=parsed.lines[:1],
+                context_before=[],
+                prompt_context=PromptContext(series_title="Test", version="v1"),
+                audio_context={1: AudioLineContext(index=1, japanese_text="ばかじゃないの", confidence=0.92, overlap_ms=1400, source="test")},
+            )
+            prompt = build_compact_user_prompt(chunk)
+            self.assertIn("english_text", prompt)
+            self.assertIn("japanese_asr_text", prompt)
+            self.assertIn("ばかじゃないの", prompt)
 
     def test_export_review_set_json(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
